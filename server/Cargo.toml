@@ -1,0 +1,8 @@
+[package]
+name = "wsserver"
+version = "0.1.0"
+authors = ["manpat <pat@patsown.com>"]
+
+[dependencies]
+sha1 = "0.2.0"
+base64 = "0.6.0"

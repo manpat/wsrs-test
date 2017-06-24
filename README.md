@@ -12,3 +12,5 @@ rustup toolchain install nightly
 rustup default nightly
 rustup target add asmjs-unknown-emscripten
 ```
+
+ws/client should target emscripten automatically because of it's .cargo/config

@@ -46,6 +46,9 @@ pub struct MainContext {
 }
 
 fn main() {
+	println!("Is Hosted:      {}", cfg!(hosted));
+	println!("Public address: {}", env!("PUBLIC_ADDRESS"));
+
 	let sock = unsafe{ socket(AF_INET, SOCK_STREAM, 0) };
 	if sock < -1 {
 		panic!("socket creation failed");
@@ -66,9 +69,6 @@ fn main() {
 			ai_canonname: std::ptr::null_mut(),
 			ai_next: std::ptr::null_mut(),
 		};
-
-		println!("Is Hosted:      {}", cfg!(hosted));
-		println!("Public address: {}", env!("PUBLIC_ADDRESS"));
 
 		let host_address = env!("PUBLIC_ADDRESS");
 		let chost_address = std::ffi::CString::new(host_address).unwrap();
@@ -225,4 +225,3 @@ pub unsafe fn compile_draw_commands(ctx: *mut MainContext) {
 		dc_fill_circle(2*indicator_r + i * (indicator_r*2 + 3), wh - indicator_r*2, indicator_r as f32);
 	}
 }
-

@@ -15,6 +15,9 @@ enum ServerMessage {
 }
 
 fn main() {
+	println!("Is Hosted:      {}", cfg!(hosted));
+	println!("Public address: {}", env!("PUBLIC_ADDRESS"));
+	
 	let listener = TcpListener::bind("0.0.0.0:9001").unwrap();
 
 	let (tx, rx) = mpsc::channel::<ServerMessage>();

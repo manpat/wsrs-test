@@ -3,10 +3,18 @@
 extern crate libc;
 use libc::*;
 use std::time;
+use std::net::TcpStream;
+use std::io::{Write, Read};
 
 mod dc;
 
-type EmscriptenMouseEvent = ();
+#[repr(C)]
+struct EmscriptenMouseEvent {
+	ts: f64,
+	x: i32, y: i32,
+	// ... I don't care about the rest of these fields
+}
+
 type EmSocketCallback = extern fn(fd: i32, ud: *mut u8);
 type EmMouseCallback = extern fn(etype: i32, evt: *const EmscriptenMouseEvent, ud: *mut u8) -> i32;
 
@@ -31,8 +39,7 @@ fn errno() -> i32 {
 
 pub struct MainContext {
 	sock: i32,
-	connected: bool,
-
+	connection: Option<TcpStream>,
 	prev_frame: time::Instant,
 
 	draw_ctx: DrawContext,
@@ -43,8 +50,6 @@ fn main() {
 	if sock < -1 {
 		panic!("socket creation failed");
 	}
-
-	let mut connected = false;
 
 	unsafe {
 		fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) | O_NONBLOCK);
@@ -62,7 +67,13 @@ fn main() {
 			ai_next: std::ptr::null_mut(),
 		};
 
-		let gairet = getaddrinfo(b"ec2-13-59-218-165.us-east-2.compute.amazonaws.com\0".as_ptr(), b"9001\0".as_ptr(), &hint, &mut addresses);
+		println!("Is Hosted:      {}", cfg!(hosted));
+		println!("Public address: {}", env!("PUBLIC_ADDRESS"));
+
+		let host_address = env!("PUBLIC_ADDRESS");
+		let chost_address = std::ffi::CString::new(host_address).unwrap();
+
+		let gairet = getaddrinfo(chost_address.as_bytes_with_nul().as_ptr(), "9001\0".as_ptr(), &hint, &mut addresses);
 		if gairet < 0 {
 			// let error = gai_strerror(gairet);
 			// let error = std::str::from_utf8(&error);
@@ -74,14 +85,17 @@ fn main() {
 			if errno() != EINPROGRESS {
 				panic!("connect failed");
 			}
-		} else {
-			connected = true;
 		}
 
 		freeaddrinfo(addresses);
 	}
 
-	let ctx = Box::new(MainContext {sock, connected, prev_frame: time::Instant::now(), draw_ctx: DrawContext::new()});
+	let ctx = Box::new(MainContext {
+		sock, 
+		connection: None,
+		prev_frame: time::Instant::now(),
+		draw_ctx: DrawContext::new()
+	});
 
 	unsafe {
 		let ctx_ptr = Box::into_raw(ctx);
@@ -91,68 +105,69 @@ fn main() {
 		emscripten_set_click_callback(std::ptr::null(), ctx_ptr as *mut u8, 0, on_click);
 		dc_set_userdata(ctx_ptr);
 
-		// emscripten_set_main_loop_arg(main_loop, ctx_ptr, 0, 1);
 		emscripten_exit_with_live_runtime();
 	}
 }
 
 extern fn on_open(fd: i32, ctx: *mut u8) {
-	let ctx: &mut MainContext = unsafe{ std::mem::transmute(ctx) };
+	use std::os::unix::io::FromRawFd;
+
+	let mut ctx: &mut MainContext = unsafe{ std::mem::transmute(ctx) };
+	ctx.connection = unsafe{ Some(TcpStream::from_raw_fd(fd)) };
 
 	println!("ON OPEN");
-	send_hello(fd);
-
-	ctx.connected = true;
+	send_hello(&mut ctx);
 }
 
 extern fn on_close(_: i32, ctx: *mut u8) {
 	let ctx: &mut MainContext = unsafe{ std::mem::transmute(ctx) };
 
-	ctx.connected = false;
+	ctx.connection = None;
 	println!("ON CLOSE");
 }
 
 extern fn on_message(fd: i32, ctx: *mut u8) {
-	let ctx: &mut MainContext = unsafe{ std::mem::transmute(ctx) };
-
 	println!("ON MESSAGE");
 
-	unsafe {
-		let mut buf = [0u8; 1024];
+	let ctx: &mut MainContext = unsafe{ std::mem::transmute(ctx) };
 
-		let len = recv(fd, std::mem::transmute(buf.as_mut_ptr()), buf.len(), 0);
-		if len == -1 {
-			println!("recv failed {}", errno());
-		} else {
-			let string = std::str::from_utf8(&buf[..len as usize]);
-			println!("RECV {:?}", string);
+	let mut buf = [0u8; 1024];
 
-			ctx.draw_ctx.circles.push(Circle{phase: 0.0, foreign: true});
+	if let Some(ref mut con) = ctx.connection {
+		match con.read(&mut buf) {
+			Ok(len) => {
+				let string = std::str::from_utf8(&buf[..len as usize]);
+				println!("RECV {:?}", string);
+
+				ctx.draw_ctx.circles.push(Circle{phase: 0.0, foreign: true});	
+			},
+
+			Err(e) => println!("recv failed {}", e)
 		}
 	}
 }
 
-extern fn on_click(_: i32, _: *const EmscriptenMouseEvent, ud: *mut u8) -> i32 {
+extern fn on_click(_: i32, e: *const EmscriptenMouseEvent, ud: *mut u8) -> i32 {
 	let mut ctx: &mut MainContext = unsafe{ std::mem::transmute(ud) };
 
 	ctx.draw_ctx.circles.push(Circle{phase: 0.0, foreign: false});
 
-	unsafe {
-		let msg = b"click";
-		if send(ctx.sock, std::mem::transmute(msg.as_ptr()), msg.len(), 0) == -1 {
-			println!("send failed {}", errno());
+	let msg = "click";
+	if let Some(ref mut con) = ctx.connection {
+		if let Err(e) = con.write_all(msg.as_bytes()) {
+			println!("send failed {}", e);
 		}
 	}
 
 	1
 }
 
-fn send_hello(fd: i32) {
-	let msg = b"Hello all";
+fn send_hello(ctx: &mut MainContext) {
+	let msg = "Hello all";
 
-	unsafe {
-		if send(fd, std::mem::transmute(msg.as_ptr()), msg.len(), 0) == -1 {
-			println!("send failed {}", errno());
+	if let Some(ref mut con) = ctx.connection {
+		if let Err(e) = con.write_all(msg.as_bytes()) {
+			println!("send failed {}", e);
 		}
 	}
 }

@@ -75,7 +75,7 @@ fn server_loop(rx: mpsc::Receiver<ServerMessage>) {
 					stream.set_nonblocking(true).expect("Set nonblock failed");
 					id_counter += 1;
 					connections.push(Connection::new(stream, id_counter));
-					println!("Connection");
+					println!("Connection ({})", id_counter);
 				},
 
 				ServerMessage::Kill => break 'main,
@@ -90,14 +90,14 @@ fn server_loop(rx: mpsc::Receiver<ServerMessage>) {
 			};
 
 			if length == 0 {
-				println!("Zero length packet");
+				println!("Zero length packet ({})", c.id);
 				c.delete_flag = true;
 				continue;				
 			}
 
 			let payload = decode_ws_packet(&mut packet_buffer[..length]);
 			if payload.len() == 0 {
-				println!("Disconnection");
+				println!("Disconnection ({})", c.id);
 				c.delete_flag = true;
 				continue;
 			}
@@ -105,7 +105,7 @@ fn server_loop(rx: mpsc::Receiver<ServerMessage>) {
 			let string = std::str::from_utf8(&payload);
 			if !string.is_ok() {
 				c.delete_flag = true;
-				println!("Invalid payload");
+				println!("Invalid payload ({})", c.id);
 				continue;
 			}
 

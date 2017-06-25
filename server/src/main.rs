@@ -17,8 +17,11 @@ enum ServerMessage {
 fn main() {
 	println!("Is Hosted:      {}", cfg!(hosted));
 	println!("Public address: {}", env!("PUBLIC_ADDRESS"));
-	
+
 	let listener = TcpListener::bind("0.0.0.0:9001").unwrap();
+	let fs_listener = TcpListener::bind("0.0.0.0:8000").unwrap();
+
+	thread::spawn(move || file_server_thread(fs_listener));
 
 	let (tx, rx) = mpsc::channel::<ServerMessage>();
 	let thd = thread::spawn(move || server_loop(rx));
@@ -30,13 +33,24 @@ fn main() {
 				let size = stream.read(&mut buf).unwrap();
 
 				let data = std::str::from_utf8(&buf[0..size]);
-				if let Ok(data) = data {
-					if let Some(header) = http::Request::parse(data) {
-						if header.get("Upgrade") == Some("websocket") {
-							init_websocket_connection(&mut stream, &header);
-							tx.send(ServerMessage::Connect(stream)).unwrap();
+				if let Err(e) = data {
+					println!("Error parsing request: Non utf8 data encountered");
+					continue;
+				}
+
+				match http::Request::parse(data.unwrap()) {
+					Ok(header) => {
+						if header.get("Upgrade") != Some("websocket") {
+							continue;
 						}
-					}
+
+						init_websocket_connection(&mut stream, &header);
+						tx.send(ServerMessage::Connect(stream)).unwrap();
+					},
+
+					Err(e) => {
+						println!("Error parsing request: {}", e);
+					},
 				}
 			},
 
@@ -306,4 +320,70 @@ fn encode_ws_packet<'a>(buf: &'a mut [u8], payload: &[u8]) -> &'a [u8] {
 		126 => &buf[.. 4 + len],
 		_ => &buf[.. 2 + len]
 	}
+}
+
+///////////////////////////////////////////////////////////
+
+fn file_server_thread(listener: TcpListener) {
+	let mut buf = [0u8; 8<<10];
+
+	for stream in listener.incoming() {
+		if !stream.is_ok() { continue }
+
+		let mut stream = stream.unwrap();
+		let size = stream.read(&mut buf).unwrap();
+
+		let reqstr = match std::str::from_utf8(&buf[0..size]) {
+			Ok(string) => string,
+			Err(_) => continue,
+		};
+
+		let request = match http::Request::parse(&reqstr) {
+			Ok(r) => r,
+			Err(e) => {
+				println!("Parsing request: {}", e);
+				continue;
+			}
+		};
+
+		match request.uri() {
+			"/" => send_file(&mut stream, "../client/index.html"),
+			"/wsclient.js" => {
+				if cfg!(hosted) {
+					send_file(&mut stream, "../client/target/asmjs-unknown-emscripten/release/ws.js")
+				} else {
+					send_file(&mut stream, "../client/target/asmjs-unknown-emscripten/debug/ws.js")
+				}
+			},
+			_ => {
+				http::Response::new("HTTP/1.1 404 File not found")
+					.write_to_stream(&mut stream);
+			}
+		}
+	}
+}
+
+fn send_file(mut stream: &mut TcpStream, filepath: &str) {
+	use std::fs::File;
+
+	// TODO: cache
+	let mut f = match File::open(filepath) {
+		Ok(f) => f,
+		Err(e) => {
+			println!("Couldn't open requested file '{}': {}", filepath, e);
+			http::Response::new("HTTP/1.1 500 Internal Server Error").write_to_stream(&mut stream);
+			return;
+		}
+	};
+
+	let mut buff = Vec::new();
+	if let Err(e) = f.read_to_end(&mut buff) {
+		println!("Couldn't read requested file '{}': {}", filepath, e);
+		http::Response::new("HTTP/1.1 500 Internal Server Error").write_to_stream(&mut stream);
+		return;
+	};
+
+	let mut res = http::Response::new("HTTP/1.1 200 OK");
+	res.set_body(&buff);
+	res.write_to_stream(&mut stream);
 }

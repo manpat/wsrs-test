@@ -38,4 +38,10 @@ fn main() {
 		// can be used to determine local ip
 		println!("cargo:rustc-env=PUBLIC_ADDRESS={}", "192.168.1.85");
 	}
+
+	match env!("CARGO_PKG_NAME") {
+		"wsserver" => {},
+		"wsclient" => {},
+		_ => println!("cargo:warning=Compiling unknown package")
+	}
 }

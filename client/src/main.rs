@@ -62,7 +62,7 @@ fn main() {
 			ai_next: std::ptr::null_mut(),
 		};
 
-		let gairet = getaddrinfo(b"192.168.1.85\0".as_ptr(), b"9001\0".as_ptr(), &hint, &mut addresses);
+		let gairet = getaddrinfo(b"ec2-13-59-218-165.us-east-2.compute.amazonaws.com\0".as_ptr(), b"9001\0".as_ptr(), &hint, &mut addresses);
 		if gairet < 0 {
 			// let error = gai_strerror(gairet);
 			// let error = std::str::from_utf8(&error);

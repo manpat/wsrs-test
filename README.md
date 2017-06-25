@@ -6,6 +6,8 @@ There is plenty of awful/shady code here, but this is mostly an experiment so w/
 
 Setup
 -----
+You need emscripten installed so follow [this shit](https://kripken.github.io/emscripten-site/docs/getting_started/downloads.html)
+
 ```
 curl https://sh.rustup.rs -sSf | sh
 rustup toolchain install nightly

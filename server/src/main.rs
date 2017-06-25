@@ -350,9 +350,9 @@ fn file_server_thread(listener: TcpListener) {
 			"/" => send_file(&mut stream, "../client/index.html"),
 			"/wsclient.js" => {
 				if cfg!(hosted) {
-					send_file(&mut stream, "../client/target/asmjs-unknown-emscripten/release/ws.js")
+					send_file(&mut stream, "../client/target/asmjs-unknown-emscripten/release/wsclient.js")
 				} else {
-					send_file(&mut stream, "../client/target/asmjs-unknown-emscripten/debug/ws.js")
+					send_file(&mut stream, "../client/target/asmjs-unknown-emscripten/debug/wsclient.js")
 				}
 			},
 			_ => {

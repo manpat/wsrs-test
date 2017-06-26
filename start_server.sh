@@ -6,5 +6,4 @@ for session in $(screen -ls | grep -o '[0-9]*\.server'); do
 	screen -S "${session}" -X quit;
 done
 
-screen -dmS "server" 
-screen -r -S "server" -X stuff $'RUST_BACKTRACE=1 cargo run\n'
+screen -dmS "server" bash -c "RUST_BACKTRACE=1 cargo run ; exec bash"

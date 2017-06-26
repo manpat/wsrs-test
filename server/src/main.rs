@@ -140,7 +140,6 @@ fn server_loop(rx: mpsc::Receiver<ServerMessage>) {
 			}
 
 			let string = string.unwrap();
-			println!("MSG({}): {}", c.id, string);
 
 			if string == "click" {
 				msg_queue.push(Message::Click(c.id));

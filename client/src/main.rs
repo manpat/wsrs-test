@@ -7,6 +7,7 @@ use std::net::TcpStream;
 use std::io::{Write, Read};
 
 mod dc;
+use dc::*;
 
 #[repr(C)]
 struct EmscriptenMouseEvent {
@@ -56,7 +57,7 @@ fn main() {
 		socket_fd: -1, 
 		connection: None,
 		prev_frame: time::Instant::now(),
-		draw_ctx: DrawContext::new()
+		draw_ctx: DrawContext::new(),
 	});
 
 	start_connection(&mut (*ctx));
@@ -136,7 +137,9 @@ extern fn on_open(fd: i32, ctx: *mut u8) {
 	let mut ctx: &mut MainContext = unsafe{ std::mem::transmute(ctx) };
 	ctx.connection = unsafe{ Some(TcpStream::from_raw_fd(fd)) };
 
-	ctx.draw_ctx.ring_circles.push(Circle{phase: 0.0, foreign: true});
+	ctx.draw_ctx.ring_circles.push(Circle {
+		phase: 0.0, color: Color::rgba(1.0, 0.7, 0.7, 0.7)
+	});
 
 	println!("ON OPEN");
 	send_hello(&mut ctx);
@@ -153,36 +156,42 @@ extern fn on_close(_: i32, vctx: *mut u8) {
 	ctx.socket_fd = -1;
 	println!("ON CLOSE");
 
-	ctx.draw_ctx.ring_circles.push(Circle{phase: 0.0, foreign: false});
+	ctx.draw_ctx.num_connected_users = 0;
+	ctx.draw_ctx.ring_circles.push(Circle {
+		phase: 0.0, color: Color::grey_a(0.4, 0.5)
+	});
 
 	unsafe{ emscripten_async_call(on_retry, vctx, 1500) };
 }
 
-extern fn on_message(fd: i32, ctx: *mut u8) {
+extern fn on_message(_: i32, ctx: *mut u8) {
 	println!("ON MESSAGE");
 
-	let ctx: &mut MainContext = unsafe{ std::mem::transmute(ctx) };
+	let mut ctx: &mut MainContext = unsafe{ std::mem::transmute(ctx) };
+	if ctx.connection.is_none() { return }
 
 	let mut buf = [0u8; 1024];
 
-	if let Some(ref mut con) = ctx.connection {
-		match con.read(&mut buf) {
-			Ok(len) => {
-				let string = std::str::from_utf8(&buf[..len as usize]);
-				println!("RECV {:?}", string);
+	let len = match ctx.connection.as_mut().unwrap().read(&mut buf) {
+		Ok(len) =>
+			if len <= 0 { return }
+			else { len },
 
-				ctx.draw_ctx.float_circles.push(Circle{phase: 0.0, foreign: true});
-			},
-
-			Err(e) => println!("recv failed {}", e)
+		Err(e) => {
+			println!("recv failed {}", e);
+			return;
 		}
-	}
+	};
+
+	handle_message(&mut ctx, buf[0], &buf[1..len]);
 }
 
 extern fn on_click(_: i32, e: *const EmscriptenMouseEvent, ud: *mut u8) -> i32 {
 	let mut ctx: &mut MainContext = unsafe{ std::mem::transmute(ud) };
 
-	ctx.draw_ctx.float_circles.push(Circle{phase: 0.0, foreign: false});
+	ctx.draw_ctx.float_circles.push(Circle {
+		phase: 0.0, color: Color::rgba(1.0, 0.6, 0.6, 0.5)
+	});
 
 	let msg = "click";
 	if let Some(ref mut con) = ctx.connection {
@@ -204,11 +213,15 @@ fn send_hello(ctx: &mut MainContext) {
 	}
 }
 
-struct Circle{phase: f32, foreign: bool}
+struct Circle {
+	color: Color,
+	phase: f32,
+}
 
 struct DrawContext {
 	float_circles: Vec<Circle>,
 	ring_circles: Vec<Circle>,
+	num_connected_users: i32,
 }
 
 impl DrawContext {
@@ -216,13 +229,13 @@ impl DrawContext {
 		DrawContext {
 			float_circles: Vec::new(),
 			ring_circles: Vec::new(),
+			num_connected_users: 0,
 		}
 	}
 }
 
 #[no_mangle]
 pub unsafe fn compile_draw_commands(ctx: *mut MainContext) {
-	use dc::*;
 	use std::f32::consts;
 
 	let mut ctx = &mut (*ctx);
@@ -235,9 +248,9 @@ pub unsafe fn compile_draw_commands(ctx: *mut MainContext) {
 	let (ww, wh) = get_canvas_size();
 
 	if ctx.connection.is_some() {
-		dc_stroke_color(255, 150, 150, 0.7);
+		dc_stroke_color(Color::rgba(1.0, 0.6, 0.6, 0.7));
 	} else {
-		dc_stroke_color(100, 100, 100, 0.7);
+		dc_stroke_color(Color::grey_a(0.4, 0.7));
 	}
 
 	dc_draw_circle(ww/2, wh/2, 50.0);
@@ -248,11 +261,7 @@ pub unsafe fn compile_draw_commands(ctx: *mut MainContext) {
 		let a = (c.phase * consts::PI).sin();
 		let r = 10.0 + 30.0 * a;
 
-		if c.foreign {
-			dc_stroke_color(100, 255, 220, 0.4 * a);
-		} else {
-			dc_stroke_color(255, 150, 150, 0.5 * a);
-		}
+		dc_stroke_color(Color{a: c.color.a * a, ..c.color});
 		dc_draw_circle(ww/2, wh/2 - (c.phase.powf(5.0) * 200.0) as i32, r);
 	}
 
@@ -262,20 +271,59 @@ pub unsafe fn compile_draw_commands(ctx: *mut MainContext) {
 		let a = 1.0 - c.phase;
 		let r = 50.0 + 10.0 * c.phase;
 
-		if ctx.connection.is_some() {
-			dc_stroke_color(255, 150, 150, 0.5 * a);
-		} else {
-			dc_stroke_color(100, 100, 100, 0.5 * a);
-		}
-
+		dc_stroke_color(Color{a: c.color.a * a, ..c.color});
 		dc_draw_circle(ww/2, wh/2, r);
 	}
 
 	dctx.float_circles.retain(|x| x.phase < 1.0);
 
+	let max_users = 6;
 	let indicator_r = 5;
-	for i in 0..3 {
-		dc_fill_color(100, 255, 100, 1.0);
+	for i in 0..std::cmp::min(dctx.num_connected_users, max_users) {
+		dc_fill_color(Color::rgb(0.4, 1.0, 0.4));
 		dc_fill_circle(2*indicator_r + i * (indicator_r*2 + 3), wh - indicator_r*2, indicator_r as f32);
+	}
+
+	if dctx.num_connected_users > max_users {
+		dc_fill_color(Color::rgba(0.4, 1.0, 0.4, 0.3));
+		dc_fill_circle(2*indicator_r + max_users * (indicator_r*2 + 3), wh - indicator_r*2, indicator_r as f32 * 4.0 / 5.0);
+	}
+}
+
+fn get_u64_from_slice(s: &[u8]) -> u64 {
+	assert!(s.len() >= 8);
+	let mut a = [0u8; 8];
+	a.clone_from_slice(&s[..8]);
+	unsafe {std::mem::transmute(a)}
+}
+
+fn handle_message(ctx: &mut MainContext, msg_type: u8, buff: &[u8]) {
+	match msg_type {
+		// Foreign click
+		b'c' => 
+			ctx.draw_ctx.float_circles.push(Circle {
+				phase: 0.0, color: Color::rgba(0.4, 1.0, 0.9, 0.4)
+			}),
+
+		// Join
+		b'j' => {
+			ctx.draw_ctx.ring_circles.push(Circle {
+				phase: 0.0, color: Color::grey_a(0.7, 0.6)
+			});	
+		},
+
+		// Disconnect
+		b'd' => {
+			ctx.draw_ctx.ring_circles.push(Circle {
+				phase: 0.0, color: Color::rgba(0.4, 0.4, 0.7, 0.8)
+			});
+		},
+
+		// Update
+		b'u' => {
+			ctx.draw_ctx.num_connected_users = get_u64_from_slice(&buff[0..8]) as i32;
+		},
+
+		_ => {}
 	}
 }

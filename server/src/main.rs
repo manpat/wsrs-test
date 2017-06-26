@@ -79,12 +79,19 @@ impl Connection {
 	}
 }
 
+enum Message {
+	Connect(u64),
+	Disconnect(u64),
+	Click(u64),
+	Update,
+}
+
 fn server_loop(rx: mpsc::Receiver<ServerMessage>) {
 	let mut connections = Vec::new();
 	let mut packet_buffer = [0u8; 8092];
 	let mut id_counter = 0u64;
 
-	let mut click_queue = Vec::new();
+	let mut msg_queue = Vec::new();
 
 	'main: loop {
 		while let Some(msg) = rx.try_recv().ok() {
@@ -93,6 +100,7 @@ fn server_loop(rx: mpsc::Receiver<ServerMessage>) {
 					stream.set_nonblocking(true).expect("Set nonblock failed");
 					id_counter += 1;
 					connections.push(Connection::new(stream, id_counter));
+					msg_queue.push(Message::Connect(id_counter));
 					println!("Connection ({})", id_counter);
 				},
 
@@ -131,24 +139,52 @@ fn server_loop(rx: mpsc::Receiver<ServerMessage>) {
 			println!("MSG({}): {}", c.id, string);
 
 			if string == "click" {
-				click_queue.push(c.id);
+				msg_queue.push(Message::Click(c.id));
 			}
+		}
+
+		for c in connections.iter().filter(|c| c.delete_flag) {
+			msg_queue.push(Message::Disconnect(c.id));
+		}
+
+		let send_update = msg_queue.iter().any(|m| match *m {
+			Message::Connect(_) => true,
+			Message::Disconnect(_) => true,
+			_ => false,
+		});
+
+		if send_update {
+			msg_queue.push(Message::Update);
 		}
 
 		connections.retain(|x| !x.delete_flag);
 
-		for cl in &click_queue {
-			let payload: [u8; 8] = unsafe{ std::mem::transmute(*cl) };
+		let num_connected_users = connections.len() as u64;
+
+		for msg in &msg_queue {
+			let (value, ty, exclude) = match *msg {
+				Message::Click(id) => (id, b'c', true),
+				Message::Connect(id) => (id, b'j', true),
+				Message::Disconnect(id) => (id, b'd', true),
+				Message::Update => (num_connected_users, b'u', false),
+			};
+
+			let mut payload = [0u8; 9];
+			payload[0] = ty;
+			payload[1..9].copy_from_slice(unsafe{
+				&std::mem::transmute::<u64, [u8; 8]>(value)
+			});
+
 			let packet = encode_ws_packet(&mut packet_buffer, &payload);
 
 			for c in &mut connections {
-				if c.id != *cl {
+				if c.id != value || !exclude {
 					let _ = c.stream.write_all(&packet);
 				}
 			}
 		}
 
-		click_queue.clear();
+		msg_queue.clear();
 
 		thread::sleep(time::Duration::from_millis(50));
 	}

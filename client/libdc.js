@@ -13,13 +13,13 @@ mergeInto(LibraryManager.library, {
 	},
 
 
-	dc_fill_color: function(r, g, b, a) {
+	dc_fill_color_raw: function(r, g, b, a) {
 		draw_commands.push({
 			type: "fill_style",
 			style: "rgba("+r+","+g+","+b+","+a+")"
 		});
 	},
-	dc_stroke_color: function(r, g, b, a) {
+	dc_stroke_color_raw: function(r, g, b, a) {
 		draw_commands.push({
 			type: "stroke_style",
 			style: "rgba("+r+","+g+","+b+","+a+")"

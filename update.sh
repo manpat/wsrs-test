@@ -2,4 +2,4 @@
 
 git pull
 pushd client; cargo build --release; popd
-pushd server; cargo build --release; popd
+pushd server; cargo build; popd

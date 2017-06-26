@@ -31,7 +31,9 @@ fn main() {
 		match stream {
 			Ok(mut stream) => {
 				let mut buf = [0u8; 1024];
-				let size = stream.read(&mut buf).unwrap();
+				let size = match stream.read(&mut buf) {
+					Ok(s) => s, Err(_) => continue
+				};
 
 				let data = std::str::from_utf8(&buf[0..size]);
 				if !data.is_ok() {
@@ -45,8 +47,10 @@ fn main() {
 							continue;
 						}
 
-						init_websocket_connection(&mut stream, &header);
-						tx.send(ServerMessage::Connect(stream)).unwrap();
+						match init_websocket_connection(&mut stream, &header) {
+							Ok(_) => tx.send(ServerMessage::Connect(stream)).unwrap(),
+							Err(e) => println!("Error initialising connection: {}", e)
+						}
 					},
 
 					Err(e) => {
@@ -190,16 +194,23 @@ fn server_loop(rx: mpsc::Receiver<ServerMessage>) {
 	}
 }
 
-fn init_websocket_connection(mut stream: &mut TcpStream, header: &http::Request) {
+fn init_websocket_connection(mut stream: &mut TcpStream, header: &http::Request) -> Result<(), String> {
 	if !header.get("Sec-WebSocket-Protocol").unwrap_or("").contains("binary") {
-		http::Response::new("HTTP/1.1 400 Bad Request")
+		let _ = http::Response::new("HTTP/1.1 400 Bad Request")
 			.write_to_stream(&mut stream);
 
-		return;
+		return Err("Invalid websocket protocol".to_string());
 	}
 
 	let magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-	let key = header.get("Sec-WebSocket-Key").unwrap();
+	let key = match header.get("Sec-WebSocket-Key") {
+		Some(k) => k, None => {
+			let _ = http::Response::new("HTTP/1.1 400 Bad Request")
+				.write_to_stream(&mut stream);
+
+			return Err("Missing websocket key".to_string());
+		}
+	};
 	let accept_magic = format!("{}{}", key, magic);
 
 	let mut m = sha1::Sha1::new();
@@ -216,7 +227,10 @@ fn init_websocket_connection(mut stream: &mut TcpStream, header: &http::Request)
 	res.set("Cache-Control", "no-cache");
 	res.set("Pragma", "no-cache");
 
-	res.write_to_stream(&mut stream);
+	match res.write_to_stream(&mut stream) {
+		Ok(_) => Ok(()),
+		Err(e) => Err(format!("{:?}", e))
+	}
 }
 
  //  0                   1                   2                   3
@@ -361,7 +375,7 @@ fn file_server_thread(listener: TcpListener) {
 		if !stream.is_ok() { continue }
 
 		let mut stream = stream.unwrap();
-		let size = stream.read(&mut buf).unwrap();
+		let size = stream.read(&mut buf).unwrap_or(0);
 
 		let reqstr = match std::str::from_utf8(&buf[0..size]) {
 			Ok(string) => string,
@@ -397,7 +411,7 @@ fn file_server_thread(listener: TcpListener) {
 				}
 			},
 			_ => {
-				http::Response::new("HTTP/1.1 404 File not found")
+				let _ = http::Response::new("HTTP/1.1 404 File not found")
 					.write_to_stream(&mut stream);
 			}
 		}
@@ -414,7 +428,7 @@ fn send_file(mut stream: &mut TcpStream, filepath: &str, encoding: Option<&str>)
 		Ok(f) => f,
 		Err(e) => {
 			println!("Couldn't open requested file '{}': {}", filepath, e);
-			http::Response::new("HTTP/1.1 500 Internal Server Error").write_to_stream(&mut stream);
+			let _ = http::Response::new("HTTP/1.1 500 Internal Server Error").write_to_stream(&mut stream);
 			return;
 		}
 	};
@@ -422,7 +436,7 @@ fn send_file(mut stream: &mut TcpStream, filepath: &str, encoding: Option<&str>)
 	let mut body_buffer = Vec::new();
 	if let Err(e) = f.read_to_end(&mut body_buffer) {
 		println!("Couldn't read requested file '{}': {}", filepath, e);
-		http::Response::new("HTTP/1.1 500 Internal Server Error").write_to_stream(&mut stream);
+		let _ = http::Response::new("HTTP/1.1 500 Internal Server Error").write_to_stream(&mut stream);
 		return;
 	};
 
@@ -442,7 +456,7 @@ fn send_file(mut stream: &mut TcpStream, filepath: &str, encoding: Option<&str>)
 
 			_ => {
 				println!("Couldn't encode requested file '{}': Unknown encoding '{}'", filepath, encoding);
-				http::Response::new("HTTP/1.1 500 Internal Server Error").write_to_stream(&mut stream);
+				let _ = http::Response::new("HTTP/1.1 500 Internal Server Error").write_to_stream(&mut stream);
 				return;
 			}
 		};
@@ -456,5 +470,5 @@ fn send_file(mut stream: &mut TcpStream, filepath: &str, encoding: Option<&str>)
 	}
 
 	res.set_body(&body_buffer);
-	res.write_to_stream(&mut stream);
+	let _ = res.write_to_stream(&mut stream);
 }

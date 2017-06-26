@@ -1,6 +1,7 @@
 extern crate std;
 
 use std::net::TcpStream;
+use std::io;
 use std::option::Option;
 use std::collections::HashMap;
 
@@ -85,7 +86,7 @@ impl<'a> Response<'a> {
 		self.body = Some(body); // once told me
 	}
 
-	pub fn write_to_stream(&self, stream: &mut TcpStream) {
+	pub fn write_to_stream(&self, stream: &mut TcpStream) -> io::Result<()> {
 		use std::io::Write;
 
 		let it = std::iter::once(self.status_line.to_string());
@@ -99,11 +100,13 @@ impl<'a> Response<'a> {
 
 		response_str.push_str("\r\n");
 
-		let _ = stream.write(response_str.as_bytes());
+		stream.write_all(response_str.as_bytes())?;
 
 		if let Some(ref body) = self.body {
-			let _ = stream.write(&body);
+			stream.write_all(&body)?;
 		}
+
+		Ok(())
 	}
 }
 

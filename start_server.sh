@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
-screen -D -RR server -X quit || true
-screen -dmS server 
-screen -S server -X stuff $'cd server; RUST_BACKTRACE=1 cargo run\n'
+cd server > /dev/null
+
+for session in $(screen -ls | grep -o '[0-9]*\.server'); do
+	screen -S "${session}" -X quit;
+done
+
+screen -dmS "server" 
+screen -r -S "server" -X stuff $'RUST_BACKTRACE=1 cargo run\n'

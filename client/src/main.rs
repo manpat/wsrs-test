@@ -17,6 +17,7 @@ struct EmscriptenMouseEvent {
 
 type EmSocketCallback = extern fn(fd: i32, ud: *mut u8);
 type EmMouseCallback = extern fn(etype: i32, evt: *const EmscriptenMouseEvent, ud: *mut u8) -> i32;
+type EmArgCallback = extern fn(ud: *mut u8);
 
 #[allow(dead_code, improper_ctypes)]
 extern {
@@ -29,6 +30,8 @@ extern {
 
 	fn emscripten_set_click_callback(target: *const u8, ud: *mut u8, useCapture: i32, cb: EmMouseCallback);
 
+	fn emscripten_async_call(callback: EmArgCallback, ud: *mut u8, millis: i32);
+
 	fn dc_set_userdata(ud: *mut MainContext);
 }
 
@@ -38,7 +41,7 @@ fn errno() -> i32 {
 }
 
 pub struct MainContext {
-	sock: i32,
+	socket_fd: i32,
 	connection: Option<TcpStream>,
 	prev_frame: time::Instant,
 
@@ -49,13 +52,43 @@ fn main() {
 	println!("Is Hosted:      {}", cfg!(hosted));
 	println!("Public address: {}", env!("PUBLIC_ADDRESS"));
 
-	let sock = unsafe{ socket(AF_INET, SOCK_STREAM, 0) };
-	if sock < -1 {
-		panic!("socket creation failed");
-	}
+	let mut ctx = Box::new(MainContext {
+		socket_fd: -1, 
+		connection: None,
+		prev_frame: time::Instant::now(),
+		draw_ctx: DrawContext::new()
+	});
+
+	start_connection(&mut (*ctx));
 
 	unsafe {
-		fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) | O_NONBLOCK);
+		let ctx_ptr = Box::into_raw(ctx);
+		emscripten_set_socket_open_callback(ctx_ptr as *mut u8, on_open);
+		emscripten_set_socket_close_callback(ctx_ptr as *mut u8, on_close);
+		emscripten_set_socket_message_callback(ctx_ptr as *mut u8, on_message);
+		emscripten_set_click_callback(std::ptr::null(), ctx_ptr as *mut u8, 0, on_click);
+		dc_set_userdata(ctx_ptr);
+
+		emscripten_exit_with_live_runtime();
+	}
+}
+
+fn start_connection(ctx: &mut MainContext) {
+	use std::os::unix::io::FromRawFd;
+
+	if ctx.connection.is_some() { return }
+
+	unsafe {
+		if ctx.socket_fd < 0 {
+			ctx.socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+			if ctx.socket_fd < -1 {
+				panic!("socket creation failed");
+			}
+		}
+
+		let sock = ctx.socket_fd;
+
+		fcntl(sock, F_SETFL, O_NONBLOCK);
 
 		let mut addresses = std::ptr::null_mut();
 		let hint = addrinfo {
@@ -82,30 +115,18 @@ fn main() {
 
 		// https://kripken.github.io/emscripten-site/docs/api_reference/emscripten.h.html#socket-event-registration
 		if connect(sock, (*addresses).ai_addr, (*addresses).ai_addrlen) < 0 {
-			if errno() != EINPROGRESS {
-				panic!("connect failed");
+			match errno() {
+				EINPROGRESS => {},
+				EALREADY => {},
+				EISCONN => {
+					ctx.connection = Some(TcpStream::from_raw_fd(sock));
+				},
+
+				_ => panic!("connect failed ({})", errno())
 			}
 		}
 
 		freeaddrinfo(addresses);
-	}
-
-	let ctx = Box::new(MainContext {
-		sock, 
-		connection: None,
-		prev_frame: time::Instant::now(),
-		draw_ctx: DrawContext::new()
-	});
-
-	unsafe {
-		let ctx_ptr = Box::into_raw(ctx);
-		emscripten_set_socket_open_callback(ctx_ptr as *mut u8, on_open);
-		emscripten_set_socket_close_callback(ctx_ptr as *mut u8, on_close);
-		emscripten_set_socket_message_callback(ctx_ptr as *mut u8, on_message);
-		emscripten_set_click_callback(std::ptr::null(), ctx_ptr as *mut u8, 0, on_click);
-		dc_set_userdata(ctx_ptr);
-
-		emscripten_exit_with_live_runtime();
 	}
 }
 
@@ -115,15 +136,26 @@ extern fn on_open(fd: i32, ctx: *mut u8) {
 	let mut ctx: &mut MainContext = unsafe{ std::mem::transmute(ctx) };
 	ctx.connection = unsafe{ Some(TcpStream::from_raw_fd(fd)) };
 
+	ctx.draw_ctx.ring_circles.push(Circle{phase: 0.0, foreign: true});
+
 	println!("ON OPEN");
 	send_hello(&mut ctx);
 }
 
-extern fn on_close(_: i32, ctx: *mut u8) {
-	let ctx: &mut MainContext = unsafe{ std::mem::transmute(ctx) };
+extern fn on_retry(ctx: *mut u8) {
+	start_connection(unsafe{ std::mem::transmute(ctx) });
+}
+
+extern fn on_close(_: i32, vctx: *mut u8) {
+	let ctx: &mut MainContext = unsafe{ std::mem::transmute(vctx) };
 
 	ctx.connection = None;
+	ctx.socket_fd = -1;
 	println!("ON CLOSE");
+
+	ctx.draw_ctx.ring_circles.push(Circle{phase: 0.0, foreign: false});
+
+	unsafe{ emscripten_async_call(on_retry, vctx, 1500) };
 }
 
 extern fn on_message(fd: i32, ctx: *mut u8) {
@@ -139,7 +171,7 @@ extern fn on_message(fd: i32, ctx: *mut u8) {
 				let string = std::str::from_utf8(&buf[..len as usize]);
 				println!("RECV {:?}", string);
 
-				ctx.draw_ctx.circles.push(Circle{phase: 0.0, foreign: true});	
+				ctx.draw_ctx.float_circles.push(Circle{phase: 0.0, foreign: true});
 			},
 
 			Err(e) => println!("recv failed {}", e)
@@ -150,7 +182,7 @@ extern fn on_message(fd: i32, ctx: *mut u8) {
 extern fn on_click(_: i32, e: *const EmscriptenMouseEvent, ud: *mut u8) -> i32 {
 	let mut ctx: &mut MainContext = unsafe{ std::mem::transmute(ud) };
 
-	ctx.draw_ctx.circles.push(Circle{phase: 0.0, foreign: false});
+	ctx.draw_ctx.float_circles.push(Circle{phase: 0.0, foreign: false});
 
 	let msg = "click";
 	if let Some(ref mut con) = ctx.connection {
@@ -175,13 +207,15 @@ fn send_hello(ctx: &mut MainContext) {
 struct Circle{phase: f32, foreign: bool}
 
 struct DrawContext {
-	circles: Vec<Circle>,
+	float_circles: Vec<Circle>,
+	ring_circles: Vec<Circle>,
 }
 
 impl DrawContext {
 	fn new() -> DrawContext {
 		DrawContext {
-			circles: Vec::new(),
+			float_circles: Vec::new(),
+			ring_circles: Vec::new(),
 		}
 	}
 }
@@ -200,10 +234,15 @@ pub unsafe fn compile_draw_commands(ctx: *mut MainContext) {
 
 	let (ww, wh) = get_canvas_size();
 
-	dc_stroke_color(255, 150, 150, 0.7);
+	if ctx.connection.is_some() {
+		dc_stroke_color(255, 150, 150, 0.7);
+	} else {
+		dc_stroke_color(100, 100, 100, 0.7);
+	}
+
 	dc_draw_circle(ww/2, wh/2, 50.0);
 
-	for c in &mut dctx.circles {
+	for c in &mut dctx.float_circles {
 		c.phase += dt;
 
 		let a = (c.phase * consts::PI).sin();
@@ -217,7 +256,22 @@ pub unsafe fn compile_draw_commands(ctx: *mut MainContext) {
 		dc_draw_circle(ww/2, wh/2 - (c.phase.powf(5.0) * 200.0) as i32, r);
 	}
 
-	dctx.circles.retain(|x| x.phase < 1.0);
+	for c in &mut dctx.ring_circles {
+		c.phase += dt;
+
+		let a = 1.0 - c.phase;
+		let r = 50.0 + 10.0 * c.phase;
+
+		if ctx.connection.is_some() {
+			dc_stroke_color(255, 150, 150, 0.5 * a);
+		} else {
+			dc_stroke_color(100, 100, 100, 0.5 * a);
+		}
+
+		dc_draw_circle(ww/2, wh/2, r);
+	}
+
+	dctx.float_circles.retain(|x| x.phase < 1.0);
 
 	let indicator_r = 5;
 	for i in 0..3 {

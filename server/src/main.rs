@@ -181,13 +181,6 @@ fn init_websocket_connection(mut stream: &mut TcpStream, header: &http::Request)
 	res.set("Pragma", "no-cache");
 
 	res.write_to_stream(&mut stream);
-
-	let mut buf = [0u8; 1024];
-
-	{
-		let packet = encode_ws_packet(&mut buf, b"hello from serverland");
-		let _ = stream.write(&packet);
-	}
 }
 
  //  0                   1                   2                   3

@@ -2,6 +2,7 @@ mod http;
 
 extern crate sha1;
 extern crate base64;
+extern crate flate2;
 
 use std::net::{TcpStream, TcpListener};
 use std::io::{Write, Read};
@@ -33,7 +34,7 @@ fn main() {
 				let size = stream.read(&mut buf).unwrap();
 
 				let data = std::str::from_utf8(&buf[0..size]);
-				if let Err(e) = data {
+				if !data.is_ok() {
 					println!("Error parsing request: Non utf8 data encountered");
 					continue;
 				}
@@ -149,7 +150,7 @@ fn server_loop(rx: mpsc::Receiver<ServerMessage>) {
 
 		click_queue.clear();
 
-		thread::sleep(time::Duration::from_millis(100));
+		thread::sleep(time::Duration::from_millis(50));
 	}
 }
 
@@ -346,13 +347,24 @@ fn file_server_thread(listener: TcpListener) {
 			}
 		};
 
+		let encodings = match request.get("Accept-Encoding") {
+			Some(s) =>
+				s.split_terminator(',').map(|s| s.trim()).collect(),
+
+			None => Vec::new()
+		};
+
+		let encoding = encodings.iter()
+			.find(|&&enc| enc == "deflate" || enc == "gzip")
+			.map(|s| *s);
+
 		match request.uri() {
-			"/" => send_file(&mut stream, "../client/index.html"),
+			"/" => send_file(&mut stream, "../client/index.html", encoding),
 			"/wsclient.js" => {
 				if cfg!(hosted) {
-					send_file(&mut stream, "../client/target/asmjs-unknown-emscripten/release/wsclient.js")
+					send_file(&mut stream, "../client/target/asmjs-unknown-emscripten/release/wsclient.js", encoding)
 				} else {
-					send_file(&mut stream, "../client/target/asmjs-unknown-emscripten/debug/wsclient.js")
+					send_file(&mut stream, "../client/target/asmjs-unknown-emscripten/debug/wsclient.js", encoding)
 				}
 			},
 			_ => {
@@ -363,8 +375,10 @@ fn file_server_thread(listener: TcpListener) {
 	}
 }
 
-fn send_file(mut stream: &mut TcpStream, filepath: &str) {
+fn send_file(mut stream: &mut TcpStream, filepath: &str, encoding: Option<&str>) {
 	use std::fs::File;
+	use flate2::Compression;
+	use flate2::write::{GzEncoder, DeflateEncoder};
 
 	// TODO: cache
 	let mut f = match File::open(filepath) {
@@ -376,14 +390,42 @@ fn send_file(mut stream: &mut TcpStream, filepath: &str) {
 		}
 	};
 
-	let mut buff = Vec::new();
-	if let Err(e) = f.read_to_end(&mut buff) {
+	let mut body_buffer = Vec::new();
+	if let Err(e) = f.read_to_end(&mut body_buffer) {
 		println!("Couldn't read requested file '{}': {}", filepath, e);
 		http::Response::new("HTTP/1.1 500 Internal Server Error").write_to_stream(&mut stream);
 		return;
 	};
 
 	let mut res = http::Response::new("HTTP/1.1 200 OK");
-	res.set_body(&buff);
+
+	if let Some(encoding) = encoding {
+		let mut encoded_buffer = Vec::new();
+
+		let write_result = match encoding {
+			"gzip" =>
+				GzEncoder::new(&mut encoded_buffer, Compression::Default)
+					.write_all(&body_buffer),
+
+			"deflate" =>
+				DeflateEncoder::new(&mut encoded_buffer, Compression::Default)
+					.write_all(&body_buffer),
+
+			_ => {
+				println!("Couldn't encode requested file '{}': Unknown encoding '{}'", filepath, encoding);
+				http::Response::new("HTTP/1.1 500 Internal Server Error").write_to_stream(&mut stream);
+				return;
+			}
+		};
+
+		if write_result.is_ok() {
+			body_buffer = encoded_buffer;
+			res.set("Content-Encoding", encoding);
+		} else {
+			println!("Couldn't encode requested file '{}': {}", filepath, write_result.err().unwrap());
+		}
+	}
+
+	res.set_body(&body_buffer);
 	res.write_to_stream(&mut stream);
 }

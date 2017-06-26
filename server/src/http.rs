@@ -19,18 +19,18 @@ pub struct Response<'a> {
 
 impl<'a> Request<'a> {
 	pub fn parse(data: &'a str) -> Result<Request<'a>, &str> {
-		let linesend = data.split("\r\n\r\n").next().unwrap();
-		let mut lines = linesend.split("\r\n");
-		let reqline = lines.next().unwrap();
+		let header_end = data.split("\r\n\r\n").next().unwrap();
+		let mut lines = header_end.split_terminator("\r\n");
+		let reqline = lines.next().unwrap_or("");
 
 		let mut reqlineels = reqline.split_whitespace();
 
-		if reqlineels.next().unwrap() != "GET" {
+		if reqlineels.next().unwrap_or("") != "GET" {
 			return Err("Non-GET requests not supported");
 		}
 
-		let requri = reqlineels.next().unwrap();
-		let version = reqlineels.next().unwrap();
+		let requri = reqlineels.next().unwrap_or("");
+		let version = reqlineels.next().unwrap_or("");
 
 		if version != "HTTP/1.1" {
 			return Err("Invalid HTTP version");
@@ -39,9 +39,12 @@ impl<'a> Request<'a> {
 		let mut fields = HashMap::new();
 
 		for line in lines {
-			let mut line = line.split(": ");
+			let mut line = line.splitn(2, ":").map(|s| s.trim());
 			let key = line.next().unwrap();
-			let value = line.next().unwrap();
+			let value = match line.next() {
+				Some(v) => v,
+				None => continue
+			};
 
 			fields.insert(key, value);
 		}

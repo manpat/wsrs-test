@@ -9,6 +9,8 @@ Setup
 You need emscripten installed so follow [this shit](https://kripken.github.io/emscripten-site/docs/getting_started/downloads.html)
 
 ```
+sudo apt install build-essential python
+
 curl https://sh.rustup.rs -sSf | sh
 rustup toolchain install nightly
 rustup default nightly

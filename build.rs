@@ -39,6 +39,8 @@ fn main() {
 		println!("cargo:rustc-env=PUBLIC_ADDRESS={}", "192.168.1.85");
 	}
 
+	// println!("cargo:rustc-cfg=debug_requests");
+
 	match env!("CARGO_PKG_NAME") {
 		"wsserver" => {},
 		"wsclient" => {},

@@ -31,9 +31,14 @@ fn main() {
 		match stream {
 			Ok(mut stream) => {
 				let mut buf = [0u8; 1024];
+
+				stream.set_read_timeout(Some(time::Duration::from_millis(500))).expect("set_read_timeout failed");
+
 				let size = match stream.read(&mut buf) {
 					Ok(s) => s, Err(_) => continue
 				};
+
+				if size == 0 { continue }
 
 				let data = std::str::from_utf8(&buf[0..size]);
 				if !data.is_ok() {
@@ -46,6 +51,8 @@ fn main() {
 						if header.get("Upgrade") != Some("websocket") {
 							continue;
 						}
+
+						stream.set_read_timeout(None).expect("set_read_timeout failed");
 
 						match init_websocket_connection(&mut stream, &header) {
 							Ok(_) => tx.send(ServerMessage::Connect(stream)).unwrap(),
@@ -92,7 +99,7 @@ enum Message {
 
 fn server_loop(rx: mpsc::Receiver<ServerMessage>) {
 	let mut connections = Vec::new();
-	let mut packet_buffer = [0u8; 8092];
+	let mut packet_buffer = [0u8; 8<<10];
 	let mut id_counter = 0u64;
 
 	let mut msg_queue = Vec::new();
@@ -371,20 +378,52 @@ fn file_server_thread(listener: TcpListener) {
 	let mut buf = [0u8; 8<<10];
 
 	for stream in listener.incoming() {
-		if !stream.is_ok() { continue }
+		if cfg!(debug_requests) {
+			println!("[fsrv] New connection...");
+		}
+
+		if !stream.is_ok() {
+			println!("[fsrv] Connection failed {}", stream.err().unwrap());
+			continue
+		}
 
 		let mut stream = stream.unwrap();
-		let size = stream.read(&mut buf).unwrap_or(0);
+
+		match stream.set_read_timeout(Some(time::Duration::from_millis(500))) {
+			Ok(()) => {}, Err(e) => {
+				println!("[fsrv] set_read_timeout failed: {}", e);
+				continue
+			}
+		}
+
+		let size = match stream.read(&mut buf) {
+			Ok(0) => {
+				println!("[fsrv] Zero length read");
+				continue
+			},
+			
+			Err(e) => {
+				println!("[fsrv] Error reading: {}", e);
+				continue
+			},
+
+			Ok(len) => len,
+		};
 
 		let reqstr = match std::str::from_utf8(&buf[0..size]) {
 			Ok(string) => string,
 			Err(_) => continue,
 		};
 
+		if cfg!(debug_requests) {
+			println!("{}", reqstr);
+		}
+
 		let request = match http::Request::parse(&reqstr) {
 			Ok(r) => r,
 			Err(e) => {
 				println!("Parsing request: {}", e);
+				let _ = http::Response::new("HTTP/1.1 400 Bad Request").write_to_stream(&mut stream);
 				continue;
 			}
 		};

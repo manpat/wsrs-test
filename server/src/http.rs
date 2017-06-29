@@ -27,13 +27,19 @@ impl<'a> Request<'a> {
 		let mut reqlineels = reqline.split_whitespace();
 
 		if reqlineels.next().unwrap_or("") != "GET" {
+			if cfg!(debug_requests) {
+				println!("{}", data);
+			}
 			return Err("Non-GET requests not supported");
 		}
 
 		let requri = reqlineels.next().unwrap_or("");
 		let version = reqlineels.next().unwrap_or("");
 
-		if version != "HTTP/1.1" {
+		if version != "HTTP/1.0" && version != "HTTP/1.1" {
+			if cfg!(debug_requests) {
+				println!("{}", data);
+			}
 			return Err("Invalid HTTP version");
 		}
 

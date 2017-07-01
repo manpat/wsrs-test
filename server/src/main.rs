@@ -3,6 +3,7 @@ mod http;
 extern crate sha1;
 extern crate base64;
 extern crate flate2;
+extern crate common;
 
 use std::net::{TcpStream, TcpListener};
 use std::io::{Write, Read};
@@ -10,10 +11,7 @@ use std::thread;
 use std::time;
 use std::sync::mpsc;
 
-enum ServerMessage {
-	Connect(TcpStream),
-	Kill,
-}
+use common::*;
 
 fn main() {
 	println!("Is Hosted:      {}", cfg!(hosted));
@@ -24,7 +22,7 @@ fn main() {
 
 	thread::spawn(move || file_server_thread(fs_listener));
 
-	let (tx, rx) = mpsc::channel::<ServerMessage>();
+	let (tx, rx) = mpsc::channel::<TcpStream>();
 	let thd = thread::spawn(move || server_loop(rx));
 
 	for stream in listener.incoming() {
@@ -32,6 +30,7 @@ fn main() {
 			Ok(mut stream) => {
 				let mut buf = [0u8; 1024];
 
+				// TODO: poll or async instead of block until timeout
 				stream.set_read_timeout(Some(time::Duration::from_millis(500))).expect("set_read_timeout failed");
 
 				let size = match stream.read(&mut buf) {
@@ -55,7 +54,7 @@ fn main() {
 						stream.set_read_timeout(None).expect("set_read_timeout failed");
 
 						match init_websocket_connection(&mut stream, &header) {
-							Ok(_) => tx.send(ServerMessage::Connect(stream)).unwrap(),
+							Ok(_) => tx.send(stream).unwrap(),
 							Err(e) => println!("Error initialising connection: {}", e)
 						}
 					},
@@ -77,11 +76,11 @@ struct Connection {
 	stream: TcpStream,
 	delete_flag: bool,
 
-	id: u64,
+	id: u32,
 }
 
 impl Connection {
-	fn new(s: TcpStream, id: u64) -> Connection {
+	fn new(s: TcpStream, id: u32) -> Connection {
 		Connection {
 			stream: s,
 			delete_flag: false,
@@ -90,33 +89,20 @@ impl Connection {
 	}
 }
 
-enum Message {
-	Connect(u64),
-	Disconnect(u64),
-	Click(u64),
-	Update,
-}
-
-fn server_loop(rx: mpsc::Receiver<ServerMessage>) {
+fn server_loop(rx: mpsc::Receiver<TcpStream>) {
 	let mut connections = Vec::new();
 	let mut packet_buffer = [0u8; 8<<10];
-	let mut id_counter = 0u64;
+	let mut id_counter = 0u32;
 
-	let mut msg_queue = Vec::new();
+	let mut packet_queue = Vec::new();
 
 	'main: loop {
-		while let Some(msg) = rx.try_recv().ok() {
-			match msg {
-				ServerMessage::Connect(stream) => {
-					stream.set_nonblocking(true).expect("Set nonblock failed");
-					id_counter += 1;
-					connections.push(Connection::new(stream, id_counter));
-					msg_queue.push(Message::Connect(id_counter));
-					println!("Connection ({})", id_counter);
-				},
-
-				ServerMessage::Kill => break 'main,
-			}
+		while let Some(stream) = rx.try_recv().ok() {
+			stream.set_nonblocking(true).expect("Set nonblock failed");
+			id_counter += 1;
+			connections.push(Connection::new(stream, id_counter));
+			packet_queue.push(Packet::Connect(id_counter));
+			println!("Connection ({})", id_counter);
 		}
 
 		for c in &mut connections {
@@ -139,62 +125,59 @@ fn server_loop(rx: mpsc::Receiver<ServerMessage>) {
 				continue;
 			}
 
-			let string = std::str::from_utf8(&payload);
-			if !string.is_ok() {
+			if let Some(packet) = Packet::parse(&payload) {
+				if !packet.is_valid_from_client() { continue }
+
+				match packet {
+					Packet::Click(_) => packet_queue.push(Packet::Click(c.id)),
+					Packet::Debug(s) => {
+						println!("Debug ({}): {}", c.id, s);
+					},
+
+					_ => unreachable!()
+				}
+			} else {
 				c.delete_flag = true;
 				println!("Invalid payload ({})", c.id);
 				continue;
 			}
-
-			let string = string.unwrap();
-
-			if string == "click" {
-				msg_queue.push(Message::Click(c.id));
-			}
 		}
 
 		for c in connections.iter().filter(|c| c.delete_flag) {
-			msg_queue.push(Message::Disconnect(c.id));
+			packet_queue.push(Packet::Disconnect(c.id));
 		}
 
-		let send_update = msg_queue.iter().any(|m| match *m {
-			Message::Connect(_) => true,
-			Message::Disconnect(_) => true,
+		let send_update = packet_queue.iter().any(|m| match *m {
+			Packet::Connect(_) => true,
+			Packet::Disconnect(_) => true,
 			_ => false,
 		});
 
-		if send_update {
-			msg_queue.push(Message::Update);
-		}
-
 		connections.retain(|x| !x.delete_flag);
 
-		let num_connected_users = connections.len() as u64;
+		if send_update {
+			packet_queue.push(Packet::Update(connections.len() as u32));
+		}
 
-		for msg in &msg_queue {
-			let (value, ty, exclude) = match *msg {
-				Message::Click(id) => (id, b'c', true),
-				Message::Connect(id) => (id, b'j', true),
-				Message::Disconnect(id) => (id, b'd', true),
-				Message::Update => (num_connected_users, b'u', false),
-			};
+		let mut payload = [0u8; 256];
 
-			let mut payload = [0u8; 9];
-			payload[0] = ty;
-			payload[1..9].copy_from_slice(unsafe{
-				&std::mem::transmute::<u64, [u8; 8]>(value)
-			});
+		for p in &packet_queue {
+			match *p {
+				Packet::Debug(_) => continue,
+				_ => {}
+			}
 
-			let packet = encode_ws_packet(&mut packet_buffer, &payload);
+			let len = p.write(&mut payload);
+			let packet = encode_ws_packet(&mut packet_buffer, &payload[..len]);
 
 			for c in &mut connections {
-				if c.id != value || !exclude {
+				if p.should_server_send_to(c.id) {
 					let _ = c.stream.write_all(&packet);
 				}
 			}
 		}
 
-		msg_queue.clear();
+		packet_queue.clear();
 
 		thread::sleep(time::Duration::from_millis(50));
 	}
@@ -389,6 +372,7 @@ fn file_server_thread(listener: TcpListener) {
 
 		let mut stream = stream.unwrap();
 
+		// TODO: poll or async instead of block until timeout
 		match stream.set_read_timeout(Some(time::Duration::from_millis(500))) {
 			Ok(()) => {}, Err(e) => {
 				println!("[fsrv] set_read_timeout failed: {}", e);

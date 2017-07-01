@@ -8,3 +8,4 @@ build = "../build.rs"
 sha1 = "0.2.0"
 base64 = "0.6.0"
 flate2 = "0.2"
+common = { path = "../common" }

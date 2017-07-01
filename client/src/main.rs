@@ -1,10 +1,13 @@
 #![feature(link_args)]
 
+extern crate common;
 extern crate libc;
 use libc::*;
 use std::time;
 use std::net::TcpStream;
 use std::io::{Write, Read};
+
+use common::*;
 
 mod dc;
 use dc::*;
@@ -81,10 +84,12 @@ fn start_connection(ctx: &mut MainContext) {
 
 	unsafe {
 		if ctx.socket_fd < 0 {
-			ctx.socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-			if ctx.socket_fd < -1 {
-				panic!("socket creation failed");
-			}
+			close(ctx.socket_fd);
+		}
+
+		ctx.socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+		if ctx.socket_fd < -1 {
+			panic!("socket creation failed");
 		}
 
 		let sock = ctx.socket_fd;
@@ -142,7 +147,15 @@ extern fn on_open(fd: i32, ctx: *mut u8) {
 	});
 
 	println!("ON OPEN");
-	send_hello(&mut ctx);
+
+	let mut msg = [0u8; 16];
+	let len = Packet::Debug("Hello all".to_string()).write(&mut msg);
+
+	if let Some(ref mut con) = ctx.connection {
+		if let Err(e) = con.write_all(&msg[..len]) {
+			println!("send failed {}", e);
+		}
+	}
 }
 
 extern fn on_retry(ctx: *mut u8) {
@@ -152,9 +165,15 @@ extern fn on_retry(ctx: *mut u8) {
 extern fn on_close(_: i32, vctx: *mut u8) {
 	let ctx: &mut MainContext = unsafe{ std::mem::transmute(vctx) };
 
+	unsafe { close(ctx.socket_fd); }
+
+	if ctx.connection.is_some() {
+		// otherwise this is the result of a reconnect attempt
+		println!("ON CLOSE");
+	}
+
 	ctx.connection = None;
 	ctx.socket_fd = -1;
-	println!("ON CLOSE");
 
 	ctx.draw_ctx.num_connected_users = 0;
 	ctx.draw_ctx.ring_circles.push(Circle {
@@ -179,38 +198,32 @@ extern fn on_message(_: i32, ctx: *mut u8) {
 
 		Err(e) => {
 			println!("recv failed {}", e);
-			return;
+			return
 		}
 	};
 
-	handle_message(&mut ctx, buf[0], &buf[1..len]);
+	if let Some(packet) = Packet::parse(&buf[..len]) {
+		handle_message(&mut ctx, &packet);
+	}
 }
 
-extern fn on_click(_: i32, e: *const EmscriptenMouseEvent, ud: *mut u8) -> i32 {
+extern fn on_click(_: i32, _ev: *const EmscriptenMouseEvent, ud: *mut u8) -> i32 {
 	let mut ctx: &mut MainContext = unsafe{ std::mem::transmute(ud) };
 
 	ctx.draw_ctx.float_circles.push(Circle {
 		phase: 0.0, color: Color::rgba(1.0, 0.6, 0.6, 0.5)
 	});
 
-	let msg = "click";
+	let mut msg = [0u8; 5];
+	let len = Packet::Click(0).write(&mut msg);
+
 	if let Some(ref mut con) = ctx.connection {
-		if let Err(e) = con.write_all(msg.as_bytes()) {
+		if let Err(e) = con.write_all(&msg[..len]) {
 			println!("send failed {}", e);
 		}
 	}
 
 	1
-}
-
-fn send_hello(ctx: &mut MainContext) {
-	let msg = "Hello all";
-
-	if let Some(ref mut con) = ctx.connection {
-		if let Err(e) = con.write_all(msg.as_bytes()) {
-			println!("send failed {}", e);
-		}
-	}
 }
 
 struct Circle {
@@ -290,38 +303,27 @@ pub unsafe fn compile_draw_commands(ctx: *mut MainContext) {
 	}
 }
 
-fn get_u64_from_slice(s: &[u8]) -> u64 {
-	assert!(s.len() >= 8);
-	let mut a = [0u8; 8];
-	a.clone_from_slice(&s[..8]);
-	unsafe {std::mem::transmute(a)}
-}
-
-fn handle_message(ctx: &mut MainContext, msg_type: u8, buff: &[u8]) {
-	match msg_type {
-		// Foreign click
-		b'c' => 
+fn handle_message(ctx: &mut MainContext, packet: &Packet) {
+	match *packet {
+		Packet::Click(_id) => 
 			ctx.draw_ctx.float_circles.push(Circle {
 				phase: 0.0, color: Color::rgba(0.4, 1.0, 0.9, 0.4)
 			}),
 
-		// Join
-		b'j' => {
+		Packet::Connect(_id) => {
 			ctx.draw_ctx.ring_circles.push(Circle {
 				phase: 0.0, color: Color::grey_a(0.7, 0.6)
 			});	
 		},
 
-		// Disconnect
-		b'd' => {
+		Packet::Disconnect(_id) => {
 			ctx.draw_ctx.ring_circles.push(Circle {
 				phase: 0.0, color: Color::rgba(0.4, 0.4, 0.7, 0.8)
 			});
 		},
 
-		// Update
-		b'u' => {
-			ctx.draw_ctx.num_connected_users = get_u64_from_slice(&buff[0..8]) as i32;
+		Packet::Update(num_connected_users) => {
+			ctx.draw_ctx.num_connected_users = num_connected_users as i32;
 		},
 
 		_ => {}

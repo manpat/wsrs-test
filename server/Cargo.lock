@@ -3,6 +3,7 @@ name = "wsserver"
 version = "0.1.0"
 dependencies = [
  "base64 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "common 0.1.0",
  "flate2 0.2.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "sha1 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -20,6 +21,10 @@ dependencies = [
 name = "byteorder"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "common"
+version = "0.1.0"
 
 [[package]]
 name = "flate2"

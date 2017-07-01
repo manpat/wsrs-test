@@ -2,8 +2,13 @@
 name = "wsclient"
 version = "0.1.0"
 dependencies = [
+ "common 0.1.0",
  "libc 0.2.24 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "common"
+version = "0.1.0"
 
 [[package]]
 name = "libc"

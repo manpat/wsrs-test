@@ -129,7 +129,7 @@ fn server_loop(rx: mpsc::Receiver<TcpStream>) {
 				if !packet.is_valid_from_client() { continue }
 
 				match packet {
-					Packet::Click(_) => packet_queue.push(Packet::Click(c.id)),
+					Packet::Click(_, x, y) => packet_queue.push(Packet::Click(c.id, x, y)),
 					Packet::Debug(s) => {
 						println!("Debug ({}): {}", c.id, s);
 					},
@@ -162,10 +162,7 @@ fn server_loop(rx: mpsc::Receiver<TcpStream>) {
 		let mut payload = [0u8; 256];
 
 		for p in &packet_queue {
-			match *p {
-				Packet::Debug(_) => continue,
-				_ => {}
-			}
+			if !p.is_valid_from_server() { continue }
 
 			let len = p.write(&mut payload);
 			let packet = encode_ws_packet(&mut packet_buffer, &payload[..len]);
@@ -257,7 +254,7 @@ fn decode_ws_packet<'a>(buf: &'a mut [u8]) -> &'a [u8] {
 	let masked = test_bit(header, 8); // Client packets should always be masked
 	let len = extract_bits(header, 9, 7) as usize;
 
-	// For now, must be binary (TODO: handle continuation)
+	// TODO: handle continuation
 	assert!(final_packet);
 
 	match opcode {

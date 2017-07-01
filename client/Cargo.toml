@@ -5,5 +5,6 @@ authors = ["manpat <pat@patsown.com>"]
 build = "../build.rs"
 
 [dependencies]
+rand = "*"
 libc = { version = "0.2", default-features = false }
 common = { path = "../common" }

@@ -4,8 +4,6 @@ pub enum Packet {
 	Debug(String),
 	Connect(u32),
 	Disconnect(u32),
-	Click(u32, i16, i16), // id, x offset, y offset
-	Update(u32),
 }
 
 pub fn write_u32_to_slice(dst: &mut [u8], value: u32) {
@@ -53,12 +51,6 @@ impl Packet {
 			0x0  => std::str::from_utf8(&src[1..]).ok().map(|s| Packet::Debug(String::from(s))),
 			b'j' => Some( Packet::Connect(read_u32_from_slice(&src[1..])) ),
 			b'd' => Some( Packet::Disconnect(read_u32_from_slice(&src[1..])) ),
-			b'u' => Some( Packet::Update(read_u32_from_slice(&src[1..])) ),
-			b'c' => Some( Packet::Click(
-				read_u32_from_slice(&src[1..]),
-				read_u16_from_slice(&src[5..]) as i16,
-				read_u16_from_slice(&src[7..]) as i16
-			)),
 			_ => None
 		}
 	}
@@ -67,7 +59,6 @@ impl Packet {
 		let simple = match *self {
 			Packet::Connect(v) => Some(v),
 			Packet::Disconnect(v) => Some(v),
-			Packet::Update(v) => Some(v),
 			_ => None
 		};
 
@@ -82,26 +73,28 @@ impl Packet {
 			return 5
 		}
 
-		match *self {
-			Packet::Click(id, x, y) => {
-				assert!(dst.len() >= 9);
-				write_u32_to_slice(&mut dst[1..], id);
-				write_u16_to_slice(&mut dst[5..], x as u16);
-				write_u16_to_slice(&mut dst[7..], y as u16);
-				9
-			},
+		0
 
-			Packet::Debug(ref s) => {
-				let len = s.len() + 1;
+		// match *self {
+		// 	Packet::Click(id, x, y) => {
+		// 		assert!(dst.len() >= 9);
+		// 		write_u32_to_slice(&mut dst[1..], id);
+		// 		write_u16_to_slice(&mut dst[5..], x as u16);
+		// 		write_u16_to_slice(&mut dst[7..], y as u16);
+		// 		9
+		// 	},
 
-				assert!(dst.len() >= len);
-				dst[1..len].copy_from_slice(&s.as_bytes());
+		// 	Packet::Debug(ref s) => {
+		// 		let len = s.len() + 1;
 
-				len
-			},
+		// 		assert!(dst.len() >= len);
+		// 		dst[1..len].copy_from_slice(&s.as_bytes());
 
-			_ => unreachable!()
-		}
+		// 		len
+		// 	},
+
+		// 	_ => unreachable!()
+		// }
 	}
 
 	pub fn get_type(&self) -> u8 {
@@ -109,14 +102,14 @@ impl Packet {
 			Packet::Debug(_) => 0x0,
 			Packet::Connect(_) => b'j',
 			Packet::Disconnect(_) => b'd',
-			Packet::Click(..) => b'c',
-			Packet::Update(_) => b'u',
+			// Packet::Click(..) => b'c',
+			// Packet::Update(_) => b'u',
 		}
 	}
 
 	pub fn is_valid_from_client(&self) -> bool {
 		match *self {
-			Packet::Click(..) => true,
+			// Packet::Click(..) => true,
 			Packet::Debug(_) => true,
 			_ => false
 		}
@@ -131,11 +124,11 @@ impl Packet {
 
 	pub fn should_server_send_to(&self, tid: u32) -> bool {
 		match *self {
-			Packet::Click(id, ..) => id != tid,
+			// Packet::Click(id, ..) => id != tid,
 			Packet::Connect(id) => id != tid,
 			Packet::Disconnect(id) => id != tid,
 
-			Packet::Update(_) => true,
+			// Packet::Update(_) => true,
 			Packet::Debug(_) => false,
 		}
 	}

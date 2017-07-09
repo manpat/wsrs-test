@@ -1,4 +1,6 @@
+mod fileserver;
 mod http;
+mod ws;
 
 extern crate sha1;
 extern crate base64;
@@ -7,9 +9,9 @@ extern crate common;
 
 use std::net::{TcpStream, TcpListener};
 use std::io::{Write, Read};
+use std::sync::mpsc;
 use std::thread;
 use std::time;
-use std::sync::mpsc;
 
 use common::*;
 
@@ -20,7 +22,7 @@ fn main() {
 	let listener = TcpListener::bind("0.0.0.0:9001").unwrap();
 	let fs_listener = TcpListener::bind("0.0.0.0:8000").unwrap();
 
-	thread::spawn(move || file_server_thread(fs_listener));
+	thread::spawn(move || fileserver::start(fs_listener));
 
 	let (tx, rx) = mpsc::channel::<TcpStream>();
 	let thd = thread::spawn(move || server_loop(rx));
@@ -53,7 +55,7 @@ fn main() {
 
 						stream.set_read_timeout(None).expect("set_read_timeout failed");
 
-						match init_websocket_connection(&mut stream, &header) {
+						match ws::init_websocket_connection(&mut stream, &header) {
 							Ok(_) => tx.send(stream).unwrap(),
 							Err(e) => println!("Error initialising connection: {}", e)
 						}
@@ -118,7 +120,7 @@ fn server_loop(rx: mpsc::Receiver<TcpStream>) {
 				continue;				
 			}
 
-			let payload = decode_ws_packet(&mut packet_buffer[..length]);
+			let payload = ws::decode_ws_packet(&mut packet_buffer[..length]);
 			if payload.len() == 0 {
 				println!("Disconnection ({})", c.id);
 				c.delete_flag = true;
@@ -129,7 +131,7 @@ fn server_loop(rx: mpsc::Receiver<TcpStream>) {
 				if !packet.is_valid_from_client() { continue }
 
 				match packet {
-					Packet::Click(_, x, y) => packet_queue.push(Packet::Click(c.id, x, y)),
+					// Packet::Click(_, x, y) => packet_queue.push(Packet::Click(c.id, x, y)),
 					Packet::Debug(s) => {
 						println!("Debug ({}): {}", c.id, s);
 					},
@@ -147,17 +149,17 @@ fn server_loop(rx: mpsc::Receiver<TcpStream>) {
 			packet_queue.push(Packet::Disconnect(c.id));
 		}
 
-		let send_update = packet_queue.iter().any(|m| match *m {
-			Packet::Connect(_) => true,
-			Packet::Disconnect(_) => true,
-			_ => false,
-		});
+		// let send_update = packet_queue.iter().any(|m| match *m {
+		// 	Packet::Connect(_) => true,
+		// 	Packet::Disconnect(_) => true,
+		// 	_ => false,
+		// });
 
 		connections.retain(|x| !x.delete_flag);
 
-		if send_update {
-			packet_queue.push(Packet::Update(connections.len() as u32));
-		}
+		// if send_update {
+		// 	packet_queue.push(Packet::Update(connections.len() as u32));
+		// }
 
 		let mut payload = [0u8; 256];
 
@@ -165,7 +167,7 @@ fn server_loop(rx: mpsc::Receiver<TcpStream>) {
 			if !p.is_valid_from_server() { continue }
 
 			let len = p.write(&mut payload);
-			let packet = encode_ws_packet(&mut packet_buffer, &payload[..len]);
+			let packet = ws::encode_ws_packet(&mut packet_buffer, &payload[..len]);
 
 			for c in &mut connections {
 				if p.should_server_send_to(c.id) {
@@ -178,316 +180,4 @@ fn server_loop(rx: mpsc::Receiver<TcpStream>) {
 
 		thread::sleep(time::Duration::from_millis(50));
 	}
-}
-
-fn init_websocket_connection(mut stream: &mut TcpStream, header: &http::Request) -> Result<(), String> {
-	if !header.get("Sec-WebSocket-Protocol").unwrap_or("").contains("binary") {
-		let _ = http::Response::new("HTTP/1.1 400 Bad Request")
-			.write_to_stream(&mut stream);
-
-		return Err("Invalid websocket protocol".to_string());
-	}
-
-	let magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-	let key = match header.get("Sec-WebSocket-Key") {
-		Some(k) => k, None => {
-			let _ = http::Response::new("HTTP/1.1 400 Bad Request")
-				.write_to_stream(&mut stream);
-
-			return Err("Missing websocket key".to_string());
-		}
-	};
-	let accept_magic = format!("{}{}", key, magic);
-
-	let mut m = sha1::Sha1::new();
-	m.update(accept_magic.as_bytes());
-	let accept_key = base64::encode(&m.digest().bytes());
-
-	let mut res = http::Response::new("HTTP/1.1 101 Switching Protocols");
-	res.set("Upgrade", "websocket");
-	res.set("Connection", "Upgrade");
-	res.set("Sec-WebSocket-Version", "13");
-	res.set("Sec-WebSocket-Protocol", "binary");
-	res.set("Sec-WebSocket-Accept", accept_key.as_str());
-
-	res.set("Cache-Control", "no-cache");
-	res.set("Pragma", "no-cache");
-
-	match res.write_to_stream(&mut stream) {
-		Ok(_) => Ok(()),
-		Err(e) => Err(format!("{:?}", e))
-	}
-}
-
- //  0                   1                   2                   3
- //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
- // +-+-+-+-+-------+-+-------------+-------------------------------+
- // |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
- // |I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
- // |N|V|V|V|       |S|             |   (if payload len==126/127)   |
- // | |1|2|3|       |K|             |                               |
- // +-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
- // |     Extended payload length continued, if payload len == 127  |
- // + - - - - - - - - - - - - - - - +-------------------------------+
- // |                               |Masking-key, if MASK set to 1  |
- // +-------------------------------+-------------------------------+
- // | Masking-key (continued)       |          Payload Data         |
- // +-------------------------------- - - - - - - - - - - - - - - - +
- // https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_servers#Format
-
-fn extract_bits(v: u16, bit: u8, width: u8) -> u16 {
-	let shift = 16 - bit - width;
-	let mask = (1u16<<width) - 1;
-	(v >> shift) & mask
-}
-
-fn test_bit(v: u16, bit: u8) -> bool {
-	let bit = 15 - bit;
-	(v & 1<<bit) != 0
-}
-
-fn decode_ws_packet<'a>(buf: &'a mut [u8]) -> &'a [u8] {
-	let header = (buf[0] as u16) << 8 | buf[1] as u16;
-
-	let final_packet = test_bit(header, 0);
-	let opcode = extract_bits(header, 4, 4);
-	let masked = test_bit(header, 8); // Client packets should always be masked
-	let len = extract_bits(header, 9, 7) as usize;
-
-	// TODO: handle continuation
-	assert!(final_packet);
-
-	match opcode {
-		0x0 => panic!("Continuation frames not implemented"),
-		0x1 => panic!("Text frames not implemented"), // Emscripten doesn't do text frames so this is fine
-		0x2 => {},
-		0x3...0x7 => panic!("Reserved opcode {}", opcode),
-		0x8 => {
-			return &buf[0..0];
-		},
-		0x9 => panic!("Ping frame not handled"),
-		0xA => panic!("Pong frame not handled"),
-		0xB...0xF => panic!("Reserved control frame {}", opcode),
-		_ => unreachable!()
-	}
-
-	assert!(buf.len() > 2);
-
-	let extlen = match len {
-		127 => unimplemented!(),
-		126 => (buf[2] as usize) << 8 | buf[3] as usize,
-		_ => len
-	};
-
-	let mut payload = match len {
-		127 => &mut buf[10..],
-		126 => &mut buf[4..],
-		_ => &mut buf[2..],
-	};
-
-	let expected_len = if masked { extlen+4 } else { extlen };
-	if payload.len() < expected_len {
-		println!("Payload length doesn't match packet ({} != {})", payload.len(), expected_len);
-		return &payload[0..0];
-	}
-
-	if masked {
-		let mut mask = [0u8; 4];
-		mask.clone_from_slice(&payload[..4]);
-
-		for (i, val) in payload[4..expected_len].iter_mut().enumerate() {
-			*val ^= mask[i % mask.len()];
-		}
-
-		&payload[4..expected_len]
-	} else {
-		&payload[..expected_len]
-	}
-}
-
-fn encode_ws_packet<'a>(buf: &'a mut [u8], payload: &[u8]) -> &'a [u8] {
-	let short_len = match payload.len() {
-		l @ 0...125 => l,
-		126...65535 => 126,
-		_ => 127,
-	};
-
-	// Compile header
-	let mut header = 0u16;
-	header |= 1 << 15; // FIN
-	header |= 0x2 << 8; // opcode
-	header |= short_len as u16 & ((1<<7) - 1); // len field
-
-	buf[0] = (header >> 8) as u8;
-	buf[1] = (header & 0xFF) as u8;
-
-	let len = payload.len();
-
-	// Write payload length
-	match short_len {
-		127 => unimplemented!(), // 64b length
-		126 => {
-			buf[2] = (len >> 8) as u8;
-			buf[3] = (len & 0xFF) as u8;
-		},
-		_ => {},
-	}
-
-	// Copy payload
-	{
-		let mut payload_dst = match short_len {
-			127 => &mut buf[10..],
-			126 => &mut buf[4..],
-			_ => &mut buf[2..],
-		};
-
-		payload_dst[..len].copy_from_slice(&payload[..]);
-	}
-
-	// Return slice containing the entire packet
-	match short_len {
-		127 => &buf[.. 10 + len],
-		126 => &buf[.. 4 + len],
-		_ => &buf[.. 2 + len]
-	}
-}
-
-///////////////////////////////////////////////////////////
-
-fn file_server_thread(listener: TcpListener) {
-	let mut buf = [0u8; 8<<10];
-
-	for stream in listener.incoming() {
-		if cfg!(debug_requests) {
-			println!("[fsrv] New connection...");
-		}
-
-		if !stream.is_ok() {
-			println!("[fsrv] Connection failed {}", stream.err().unwrap());
-			continue
-		}
-
-		let mut stream = stream.unwrap();
-
-		// TODO: poll or async instead of block until timeout
-		match stream.set_read_timeout(Some(time::Duration::from_millis(500))) {
-			Ok(()) => {}, Err(e) => {
-				println!("[fsrv] set_read_timeout failed: {}", e);
-				continue
-			}
-		}
-
-		let size = match stream.read(&mut buf) {
-			Ok(0) => {
-				println!("[fsrv] Zero length read");
-				continue
-			},
-			
-			Err(e) => {
-				println!("[fsrv] Error reading: {}", e);
-				continue
-			},
-
-			Ok(len) => len,
-		};
-
-		let reqstr = match std::str::from_utf8(&buf[0..size]) {
-			Ok(string) => string,
-			Err(_) => continue,
-		};
-
-		if cfg!(debug_requests) {
-			println!("{}", reqstr);
-		}
-
-		let request = match http::Request::parse(&reqstr) {
-			Ok(r) => r,
-			Err(e) => {
-				println!("Parsing request: {}", e);
-				let _ = http::Response::new("HTTP/1.1 400 Bad Request").write_to_stream(&mut stream);
-				continue;
-			}
-		};
-
-		let encodings = match request.get("Accept-Encoding") {
-			Some(s) =>
-				s.split_terminator(',').map(|s| s.trim()).collect(),
-
-			None => Vec::new()
-		};
-
-		let encoding = encodings.iter()
-			.find(|&&enc| enc == "deflate" || enc == "gzip")
-			.map(|s| *s);
-
-		match request.uri() {
-			"/" => send_file(&mut stream, "../client/index.html", encoding),
-			"/wsclient.js" => {
-				if cfg!(hosted) {
-					send_file(&mut stream, "../client/target/asmjs-unknown-emscripten/release/wsclient.js", encoding)
-				} else {
-					send_file(&mut stream, "../client/target/asmjs-unknown-emscripten/debug/wsclient.js", encoding)
-				}
-			},
-			_ => {
-				let _ = http::Response::new("HTTP/1.1 404 File not found")
-					.write_to_stream(&mut stream);
-			}
-		}
-	}
-}
-
-fn send_file(mut stream: &mut TcpStream, filepath: &str, encoding: Option<&str>) {
-	use std::fs::File;
-	use flate2::Compression;
-	use flate2::write::{GzEncoder, DeflateEncoder};
-
-	// TODO: cache
-	let mut f = match File::open(filepath) {
-		Ok(f) => f,
-		Err(e) => {
-			println!("Couldn't open requested file '{}': {}", filepath, e);
-			let _ = http::Response::new("HTTP/1.1 500 Internal Server Error").write_to_stream(&mut stream);
-			return;
-		}
-	};
-
-	let mut body_buffer = Vec::new();
-	if let Err(e) = f.read_to_end(&mut body_buffer) {
-		println!("Couldn't read requested file '{}': {}", filepath, e);
-		let _ = http::Response::new("HTTP/1.1 500 Internal Server Error").write_to_stream(&mut stream);
-		return;
-	};
-
-	let mut res = http::Response::new("HTTP/1.1 200 OK");
-
-	if let Some(encoding) = encoding {
-		let mut encoded_buffer = Vec::new();
-
-		let write_result = match encoding {
-			"gzip" =>
-				GzEncoder::new(&mut encoded_buffer, Compression::Default)
-					.write_all(&body_buffer),
-
-			"deflate" =>
-				DeflateEncoder::new(&mut encoded_buffer, Compression::Default)
-					.write_all(&body_buffer),
-
-			_ => {
-				println!("Couldn't encode requested file '{}': Unknown encoding '{}'", filepath, encoding);
-				let _ = http::Response::new("HTTP/1.1 500 Internal Server Error").write_to_stream(&mut stream);
-				return;
-			}
-		};
-
-		if write_result.is_ok() {
-			body_buffer = encoded_buffer;
-			res.set("Content-Encoding", encoding);
-		} else {
-			println!("Couldn't encode requested file '{}': {}", filepath, write_result.err().unwrap());
-		}
-	}
-
-	res.set_body(&body_buffer);
-	let _ = res.write_to_stream(&mut stream);
 }

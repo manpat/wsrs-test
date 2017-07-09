@@ -1,4 +1,12 @@
+#[cfg(CARGO_PKG_NAME="wsclient")]
+extern crate gl_generator;
+
+#[cfg(CARGO_PKG_NAME="wsclient")]
+use gl_generator::{Registry, Api, Profile, Fallbacks, StaticGenerator};
+
+use std::env;
 use std::fs::File;
+use std::path::Path;
 use std::net::TcpStream;
 use std::io::{Read, Write};
 
@@ -43,7 +51,21 @@ fn main() {
 
 	match env!("CARGO_PKG_NAME") {
 		"wsserver" => {},
-		"wsclient" => {},
+		"wsclient" => {
+			generate_gl_bindings();
+		},
 		_ => println!("cargo:warning=Compiling unknown package")
+	}
+}
+
+fn generate_gl_bindings() {
+	#[cfg(CARGO_PKG_NAME="wsclient")]
+	{
+		let dest = env::var("OUT_DIR").unwrap();
+		let mut file = File::create(&Path::new(&dest).join("gl_bindings.rs")).unwrap();
+
+		Registry::new(Api::Gles2, (2, 1), Profile::Core, Fallbacks::All, [])
+			.write_bindings(StaticGenerator, &mut file)
+			.unwrap();
 	}
 }

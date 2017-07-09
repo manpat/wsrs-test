@@ -14,89 +14,26 @@
 				padding: 0;
 			}
 
-			html, body, canvas {
+			html, body {
 				width: 100vw;
 				height: 100vh;
 				overflow: hidden;
 			}
 
 			canvas {
+				overflow: hidden;
 				display: block;
+			}
+
+			#downloadcanvas {
+				display: none;
 			}
 		</style>
 	</head>
 
 	<body>
 		<canvas id="canvas"></canvas>
-		<script>
-			var dc_userdata = null;
-			var cv = document.getElementById('canvas');
-			var ctx;
-
-			var draw_commands = [];
-
-			function draw() {
-				cv.width = window.innerWidth;
-				cv.height = window.innerHeight;
-				cv.style.width = cv.width;
-				cv.style.height = cv.height;
-
-				ctx.fillStyle = '#222';
-				ctx.fillRect(0, 0, cv.width, cv.height); // clear
-
-				Module._compile_draw_commands(dc_userdata);
-				for(var i = 0; i < draw_commands.length; i++) {
-					var c = draw_commands[i];
-					switch(c.type) {
-						case "fill_style":
-							ctx.fillStyle = c.style;
-							break;
-
-						case "stroke_style":
-							ctx.strokeStyle = c.style;
-							break;
-
-						case "fill_rect":
-							ctx.fillRect(c.x, c.y, c.w, c.h);
-							break;
-
-						case "fill_text":
-							ctx.fillText(c.text, c.x, c.y);
-							break;
-
-						case "set_font":
-							ctx.font = c.font;
-							break;
-
-						case "draw_circle":
-							ctx.beginPath();
-							ctx.arc(c.x, c.y, c.r, 0, 2*Math.PI);
-							ctx.stroke();
-							break;
-
-						case "fill_circle":
-							ctx.beginPath();
-							ctx.arc(c.x, c.y, c.r, 0, 2*Math.PI);
-							ctx.fill();
-							break;
-
-						default:
-							console.warn("Unknown draw stack type", c.type)
-					}
-				}
-
-				draw_commands = [];
-				window.requestAnimationFrame(draw);
-			}
-
-			function init() {
-				ctx = cv.getContext('2d');
-				draw();
-			}
-
-			window.addEventListener('load', init);
-		</script>
-
+		<canvas id="downloadcanvas"></canvas>
 		<script src="wsclient.js"></script>
 	</body>
 </html>

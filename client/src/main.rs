@@ -9,14 +9,14 @@ use std::io::Read;
 
 use common::*;
 
+#[macro_use]
 mod ems;
-mod connection;
+mod util;
 mod context;
+mod rendering;
+mod connection;
 
 use context::*;
-
-// #[macro_use]
-// mod dc;
 
 fn main() {
 	println!("Is Hosted:      {}", cfg!(hosted));

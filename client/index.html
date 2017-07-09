@@ -71,17 +71,17 @@
 						case "draw_circle":
 							ctx.beginPath();
 							ctx.arc(c.x, c.y, c.r, 0, 2*Math.PI);
-							ctx.stroke()
+							ctx.stroke();
 							break;
 
 						case "fill_circle":
 							ctx.beginPath();
 							ctx.arc(c.x, c.y, c.r, 0, 2*Math.PI);
-							ctx.fill()
+							ctx.fill();
 							break;
 
 						default:
-							console.warn("Unknown draw stack ")
+							console.warn("Unknown draw stack type", c.type)
 					}
 				}
 

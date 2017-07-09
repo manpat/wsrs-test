@@ -72,3 +72,51 @@ impl Color {
 		((r*255.0) as u8, (g*255.0) as u8, (b*255.0) as u8, (a*255.0) as u8)
 	}
 }
+
+
+
+pub trait Interop {
+	fn as_int(self, _: &mut Vec<CString>) -> i32;
+}
+
+impl Interop for i32 {
+	fn as_int(self, _: &mut Vec<CString>) -> i32 {
+		return self;
+	}
+}
+
+impl<'a> Interop for &'a str {
+	fn as_int(self, arena: &mut Vec<CString>) -> i32 {
+		let c = CString::new(self).unwrap();
+		let ret = c.as_ptr() as i32;
+		arena.push(c);
+		return ret;
+	}
+}
+
+impl<'a> Interop for *const u8 {
+	fn as_int(self, _: &mut Vec<CString>) -> i32 {
+		return self as i32;
+	}
+}
+
+extern "C" {
+	pub fn emscripten_asm_const_int(s: *const u8, ...) -> i32;
+} 
+
+#[macro_export]
+macro_rules! js {
+	( ($( $x:expr ),*) $y:expr ) => {
+		{
+			let mut arena: Vec<std::ffi::CString> = Vec::new();
+			const LOCAL: &'static [u8] = $y;
+			unsafe { ::dc::emscripten_asm_const_int(&LOCAL[0] as *const _ as *const u8, $($crate::Interop::as_int($x, &mut arena)),*) }
+		}
+	};
+	( $y:expr ) => {
+		{
+			const LOCAL: &'static [u8] = $y;
+			unsafe { ::dc::emscripten_asm_const_int(&LOCAL[0] as *const _ as *const u8) }
+		}
+	};
+}

@@ -10,6 +10,7 @@ use std::io::{Write, Read};
 
 use common::*;
 
+#[macro_use]
 mod dc;
 use dc::*;
 
@@ -85,12 +86,12 @@ fn start_connection(ctx: &mut MainContext) {
 	if ctx.connection.is_some() { return }
 
 	unsafe {
-		if ctx.socket_fd < 0 {
+		if ctx.socket_fd >= 0 {
 			close(ctx.socket_fd);
 		}
 
 		ctx.socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-		if ctx.socket_fd < -1 {
+		if ctx.socket_fd < 0 {
 			panic!("socket creation failed");
 		}
 

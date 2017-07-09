@@ -85,12 +85,14 @@ macro_rules! js {
 		{
 			use std::ffi::CString;
 			let mut arena: Vec<CString> = Vec::new();
+			#[allow(dead_code)]
 			const LOCAL: &'static [u8] = $y;
 			unsafe { ::ems::emscripten_asm_const_int(&LOCAL[0] as *const _ as *const u8, $(::ems::Interop::as_int($x, &mut arena)),*) }
 		}
 	};
 	( $y:expr ) => {
 		{
+			#[allow(dead_code)]
 			const LOCAL: &'static [u8] = $y;
 			unsafe { ::ems::emscripten_asm_const_int(&LOCAL[0] as *const _ as *const u8) }
 		}
@@ -108,6 +110,7 @@ pub fn start(ctx_ptr: *mut MainContext) {
 extern fn on_update(ud: *mut u8) {
 	let mut ctx: &mut MainContext = unsafe{ transmute(ud) };
 
+	ctx.process_packets();
 	ctx.on_update();
 	ctx.on_render();
 }

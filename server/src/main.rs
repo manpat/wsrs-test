@@ -1,6 +1,9 @@
+mod connections;
 mod fileserver;
 mod http;
 mod ws;
+
+mod world;
 
 extern crate sha1;
 extern crate base64;
@@ -8,12 +11,24 @@ extern crate flate2;
 extern crate common;
 
 use std::net::{TcpStream, TcpListener};
-use std::io::{Write, Read};
+use std::io::Read;
 use std::sync::mpsc;
 use std::thread;
 use std::time;
 
 use common::*;
+use connections::ConnectionID;
+
+// main thread, sim -> network thread
+enum NetworkMessage {
+	NewConnection(TcpStream),
+	NewSession(ConnectionID, u32),
+}
+
+// network thread -> sim thread
+enum SimulationMessage {
+	RequestNewSession(ConnectionID),
+}
 
 fn main() {
 	println!("Is Hosted:      {}", cfg!(hosted));
@@ -24,8 +39,12 @@ fn main() {
 
 	thread::spawn(move || fileserver::start(fs_listener));
 
-	let (tx, rx) = mpsc::channel::<TcpStream>();
-	let thd = thread::spawn(move || server_loop(rx));
+	let (main_tx, net_rx) = mpsc::channel::<NetworkMessage>();
+	let (net_tx, sim_rx) = mpsc::channel::<SimulationMessage>();
+	let sim_tx = main_tx.clone();
+
+	let connection_thd = thread::spawn(move || network_loop(net_rx, net_tx));
+	let simulation_thd = thread::spawn(move || sim_loop(sim_tx, sim_rx));
 
 	for stream in listener.incoming() {
 		match stream {
@@ -56,7 +75,7 @@ fn main() {
 						stream.set_read_timeout(None).expect("set_read_timeout failed");
 
 						match ws::init_websocket_connection(&mut stream, &header) {
-							Ok(_) => tx.send(stream).unwrap(),
+							Ok(_) => main_tx.send(NetworkMessage::NewConnection(stream)).unwrap(),
 							Err(e) => println!("Error initialising connection: {}", e)
 						}
 					},
@@ -71,113 +90,90 @@ fn main() {
 		}
 	}
 
-	thd.join().unwrap();
+	connection_thd.join().unwrap();
+	simulation_thd.join().unwrap();
 }
 
-struct Connection {
-	stream: TcpStream,
-	delete_flag: bool,
-
-	id: u32,
-}
-
-impl Connection {
-	fn new(s: TcpStream, id: u32) -> Connection {
-		Connection {
-			stream: s,
-			delete_flag: false,
-			id
-		}
-	}
-}
-
-fn server_loop(rx: mpsc::Receiver<TcpStream>) {
-	let mut connections = Vec::new();
+fn network_loop(rx: mpsc::Receiver<NetworkMessage>, tx: mpsc::Sender<SimulationMessage>) {
+	let mut connections = connections::ConnectionManager::new();
 	let mut packet_buffer = [0u8; 8<<10];
-	let mut id_counter = 0u32;
 
-	let mut packet_queue = Vec::new();
+	let mut packet_queue: Vec<(Option<ConnectionID>, Packet)> = Vec::new();
 
 	'main: loop {
-		while let Some(stream) = rx.try_recv().ok() {
-			stream.set_nonblocking(true).expect("Set nonblock failed");
-			id_counter += 1;
-			connections.push(Connection::new(stream, id_counter));
-			packet_queue.push(Packet::Connect(id_counter));
-			println!("Connection ({})", id_counter);
-		}
+		while let Some(msg) = rx.try_recv().ok() {
+			use NetworkMessage as NM;
 
-		for c in &mut connections {
-			let res = c.stream.read(&mut packet_buffer);
-			let length = match res {
-				Ok(length) => length,
-				Err(_) => continue,
-			};
-
-			if length == 0 {
-				println!("Zero length packet ({})", c.id);
-				c.delete_flag = true;
-				continue;				
-			}
-
-			let payload = ws::decode_ws_packet(&mut packet_buffer[..length]);
-			if payload.len() == 0 {
-				println!("Disconnection ({})", c.id);
-				c.delete_flag = true;
-				continue;
-			}
-
-			if let Some(packet) = Packet::parse(&payload) {
-				if !packet.is_valid_from_client() { continue }
-
-				match packet {
-					// Packet::Click(_, x, y) => packet_queue.push(Packet::Click(c.id, x, y)),
-					Packet::Debug(s) => {
-						println!("Debug ({}): {}", c.id, s);
-					},
-
-					_ => unreachable!()
-				}
-			} else {
-				c.delete_flag = true;
-				println!("Invalid payload ({})", c.id);
-				continue;
+			match msg {
+				NM::NewConnection(stream) => connections.register_connection(stream),
+				NM::NewSession(id, token) => {
+					if connections.imbue_session(id, token) {
+						packet_queue.push((Some(id), Packet::AuthSuccessful(token)));
+					}
+				},
 			}
 		}
 
-		for c in connections.iter().filter(|c| c.delete_flag) {
-			packet_queue.push(Packet::Disconnect(c.id));
+		while let Some((id, packet)) = connections.try_read(&mut packet_buffer) {
+			match packet {
+				Packet::Debug(s) => {
+					println!("Debug ({}): {}", id, s);
+				},
+
+				_ => {}
+			}
 		}
 
-		// let send_update = packet_queue.iter().any(|m| match *m {
-		// 	Packet::Connect(_) => true,
-		// 	Packet::Disconnect(_) => true,
-		// 	_ => false,
-		// });
+		connections.flush();
 
-		connections.retain(|x| !x.delete_flag);
+		while let Some(id) = connections.poll_new_sessions() {
+			use SimulationMessage as SM;
 
-		// if send_update {
-		// 	packet_queue.push(Packet::Update(connections.len() as u32));
-		// }
+			tx.send(SM::RequestNewSession(id)).unwrap();
+		}
 
-		let mut payload = [0u8; 256];
-
-		for p in &packet_queue {
+		for &(id, ref p) in &packet_queue {
 			if !p.is_valid_from_server() { continue }
 
-			let len = p.write(&mut payload);
-			let packet = ws::encode_ws_packet(&mut packet_buffer, &payload[..len]);
-
-			for c in &mut connections {
-				if p.should_server_send_to(c.id) {
-					let _ = c.stream.write_all(&packet);
-				}
+			if let Some(id) = id {
+				connections.send_to(id, &p);
+			} else {
+				connections.broadcast_to_authed(&p);
 			}
 		}
 
 		packet_queue.clear();
 
 		thread::sleep(time::Duration::from_millis(50));
+	}
+}
+
+//////////////////////////////
+
+fn sim_loop(tx: mpsc::Sender<NetworkMessage>, rx: mpsc::Receiver<SimulationMessage>) {
+	use world::World;
+
+	let mut world = World::new();
+
+	'main: loop {
+		while let Some(msg) = rx.try_recv().ok() {
+			use SimulationMessage as SM;
+			use NetworkMessage as NM;
+
+			match msg {
+				SM::RequestNewSession(con_id) => {
+					// Create new session
+					println!("New Session requested for {}", con_id);
+					let new_session_id = 123;
+					tx.send(NM::NewSession(con_id, new_session_id)).unwrap();
+				},
+			}
+		}
+
+		world.update();
+
+		// for e in world.events { tx.send(NetworkMessage::Blah) }
+
+		thread::sleep(time::Duration::from_millis(100));
 	}
 }

@@ -3,6 +3,7 @@ use rendering::{RenderingContext, RenderState};
 use connection::Connection;
 
 use common::*;
+use ui;
 
 pub struct MainContext {
 	pub connection: Box<Connection>,
@@ -11,6 +12,8 @@ pub struct MainContext {
 
 	pub render_ctx: RenderingContext,
 	pub render_state: RenderState,
+
+	pub auth_screen: ui::AuthScreen,
 } 
 
 impl MainContext {
@@ -27,6 +30,8 @@ impl MainContext {
 
 			render_ctx,
 			render_state: RenderState::new(),
+
+			auth_screen: ui::AuthScreen::new(),
 		}
 	}
 
@@ -40,24 +45,35 @@ impl MainContext {
 		println!("Connection lost");
 	}
 	
-	#[allow(dead_code, unused_variables)]
-	pub fn on_update(&mut self) {}
+	pub fn on_update(&mut self) {
+		let now = time::Instant::now();
+		let diff = now - self.prev_frame;
+		self.prev_frame = now;
+
+		let udt = (diff.subsec_nanos() / 1000);
+		let dt = udt as f32 / 1000_000.0;
+		self.auth_screen.update(dt);
+	}
 
 	pub fn on_render(&mut self) {
 		self.render_ctx.fit_target_to_viewport();
+		self.render_state.set_viewport(&self.render_ctx.get_viewport());
+		
+		// TODO: pls no
+		self.auth_screen.viewport = self.render_ctx.get_viewport();
+
+		self.render_state.clear();
+		self.auth_screen.render(&mut self.render_state);
+		self.render_state.flush_geom();
+		
 		self.render_ctx.render(&self.render_state);
 	}
 
-	#[allow(dead_code, unused_variables)]
 	pub fn on_click(&mut self, x: i32, y: i32) {
-		self.connection.send(&Packet::Debug("Hello".to_string()));
-		// use util;
-
-		// let mut tmp = RenderingContext::new("downloadcanvas");
-		// tmp.set_target_size(400, 400);
-		// tmp.render(&self.render_state);
-
-		// util::save_canvas("downloadcanvas");
+		let (sx, sy) = self.render_ctx.get_viewport()
+			.client_to_gl_coords(x as f32, y as f32)
+			.to_tuple();
+		self.auth_screen.on_click(sx, sy);
 	}
 
 	pub fn process_packets(&mut self) {

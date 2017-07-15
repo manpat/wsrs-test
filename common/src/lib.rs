@@ -9,6 +9,7 @@ pub enum Packet {
 
 	// Server -> Client
 	AuthSuccessful(u32),
+	AuthFail,
 }
 
 pub fn write_u32_to_slice(dst: &mut [u8], value: u32) {
@@ -56,6 +57,7 @@ impl Packet {
 			0x2  => Some(Packet::AttemptAuthSession(read_u32_from_slice(&src[1..]))),
 
 			0x80 => Some(Packet::AuthSuccessful(read_u32_from_slice(&src[1..]))),
+			0x81 => Some(Packet::AuthFail),
 			_ => None
 		}
 	}
@@ -84,7 +86,8 @@ impl Packet {
 			Packet::AuthSuccessful(tok) => {
 				write_u32_to_slice(&mut dst[1..], tok);
 				5
-			}
+			},
+			Packet::AuthFail => 1,
 		}
 	}
 
@@ -97,6 +100,7 @@ impl Packet {
 
 			// Server -> Client
 			Packet::AuthSuccessful(_) => 0x80,
+			Packet::AuthFail => 0x81,
 		}
 	}
 
@@ -116,14 +120,5 @@ impl Packet {
 			Packet::AttemptAuthSession(_) => false,
 			_ => true
 		}
-	}
-
-	pub fn should_server_send_to(&self, _tid: u32) -> bool {
-		if !self.is_valid_from_server() { return false }
-
-		// match *self {
-		// 	_ => true,
-		// }
-		true
 	}
 }

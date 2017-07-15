@@ -11,6 +11,9 @@ mod context;
 mod rendering;
 mod connection;
 
+mod ui;
+mod easing;
+
 use context::*;
 
 fn main() {

@@ -23,11 +23,14 @@ use connections::ConnectionID;
 enum NetworkMessage {
 	NewConnection(TcpStream),
 	NewSession(ConnectionID, u32),
+	AuthSuccess(ConnectionID, u32),
+	AuthFail(ConnectionID),
 }
 
 // network thread -> sim thread
 enum SimulationMessage {
 	RequestNewSession(ConnectionID),
+	AttemptAuthSession(ConnectionID, u32),
 }
 
 fn main() {
@@ -111,6 +114,16 @@ fn network_loop(rx: mpsc::Receiver<NetworkMessage>, tx: mpsc::Sender<SimulationM
 						packet_queue.push((Some(id), Packet::AuthSuccessful(token)));
 					}
 				},
+
+				NM::AuthSuccess(id, token) => {
+					if connections.imbue_session(id, token) {
+						packet_queue.push((Some(id), Packet::AuthSuccessful(token)));
+					}
+				},
+
+				NM::AuthFail(id) => {
+					connections.notify_auth_fail(id);
+				}
 			}
 		}
 
@@ -130,6 +143,12 @@ fn network_loop(rx: mpsc::Receiver<NetworkMessage>, tx: mpsc::Sender<SimulationM
 			use SimulationMessage as SM;
 
 			tx.send(SM::RequestNewSession(id)).unwrap();
+		}
+
+		while let Some((id, token)) = connections.poll_auth_attempts() {
+			use SimulationMessage as SM;
+
+			tx.send(SM::AttemptAuthSession(id, token)).unwrap();
 		}
 
 		for &(id, ref p) in &packet_queue {
@@ -167,6 +186,14 @@ fn sim_loop(tx: mpsc::Sender<NetworkMessage>, rx: mpsc::Receiver<SimulationMessa
 					let new_session_id = 123;
 					tx.send(NM::NewSession(con_id, new_session_id)).unwrap();
 				},
+
+				SM::AttemptAuthSession(con_id, token) => {
+					if token != 123 {
+						tx.send(NM::AuthFail(con_id)).unwrap()
+					} else {
+						tx.send(NM::AuthSuccess(con_id, token)).unwrap()
+					}
+				}
 			}
 		}
 

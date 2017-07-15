@@ -28,7 +28,7 @@ impl ClickyThing {
 
 	fn update(&mut self, dt: f32) {
 		let target_pos = self.state as f32;
-		self.pos = self.anim_phase.ease_back_out(self.prev_pos, target_pos, 0.4);
+		self.pos = self.anim_phase.ease_back_out(self.prev_pos, target_pos, 0.6);
 
 		self.anim_phase += dt;
 	}
@@ -40,12 +40,20 @@ impl ClickyThing {
 	}
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum AuthScreenAction {
+	// RequestNewSession,
+	TryAuth(u32),
+}
+
 pub struct AuthScreen {
 	clicky_things: Vec<ClickyThing>,
 	phase: f32,
 
 	pub viewport: Viewport,
 	download_button_pos: Vec2,
+
+	action: Option<AuthScreenAction>,
 }
 
 impl AuthScreen {
@@ -61,6 +69,8 @@ impl AuthScreen {
 
 			viewport: Viewport::new(),
 			download_button_pos: Vec2::zero(),
+
+			action: None,
 		}
 	}
 
@@ -72,38 +82,75 @@ impl AuthScreen {
 		let r = 0.5;
 		let click_zone = 0.13;
 
-		let mut has_changed = false;
+		let mut key_changed = false;
 
-		for (i, mut thing) in self.clicky_things.iter_mut().enumerate() {
-			let th = i as f32 * increment + th_start;
+		let dist_to_center = click_pos.length();
+		let angle = click_pos.y.atan2(click_pos.x);
 
-			let offset = Vec2::new(r * th.cos(), r * th.sin());
-			if (click_pos - offset).length() < click_zone {
-				let nstate = (thing.state + 1)%KEY_BASE as u8;
-				thing.set_state(nstate);
+		if dist_to_center > 0.2 && dist_to_center < 0.6 {
+			let segment = (angle - th_start) / increment + 0.5 + KEY_LENGTH as f32;
+			let segment = segment as u32 % KEY_LENGTH;
 
-				has_changed = true;
-			}
+			let thing = &mut self.clicky_things[segment as usize];
+
+			let nstate = (thing.state + 1)%KEY_BASE as u8;
+			thing.set_state(nstate);
+
+			key_changed = true;
+		}
+
+		if dist_to_center < 0.2 {
+			let key = self.calculate_key();
+			println!("Requesting auth {}", key);
+			self.action = Some(AuthScreenAction::TryAuth(key));
 		}
 
 		if (self.download_button_pos - click_pos).length() < 0.1 {
 			self.download_key();
 		}
 
-		if has_changed {
+		if (self.viewport.get_top_left() - click_pos).length() < 0.1 {
+			use rand;
+
+			let max_key = KEY_BASE.pow(KEY_LENGTH);
+			let random_key = rand::random::<u32>() % max_key;
+
+			self.set_key(random_key);
+			key_changed = true;
+		}
+
+		if key_changed {
 			println!("New key: {}", self.calculate_key());
 		}
 	}
 
-	fn calculate_key(&self) -> u32 {
-		// TODO ???
-		// assert!(KEY_LENGTH.pow(KEY_BASE) < u32::MAX);
+	pub fn poll_actions(&mut self) -> Option<AuthScreenAction> {
+		let action = self.action;
+		self.action = None;
+		action
+	}
+
+	pub fn calculate_key(&self) -> u32 {
+		use std;
+		assert!(KEY_BASE.pow(KEY_LENGTH) < std::u32::MAX);
 
 		self.clicky_things.iter().enumerate().fold(0, |acc, (i, th)| {
 			assert!((th.state as u32) < KEY_BASE);
 			
 			acc + th.state as u32 * KEY_BASE.pow(i as u32)
 		})
+	}
+
+	pub fn set_key(&mut self, mut key: u32) {
+		let max_key = KEY_BASE.pow(KEY_LENGTH);
+		assert!(key < max_key);
+
+		for (i, mut th) in self.clicky_things.iter_mut().enumerate().rev() {
+			let factor = KEY_BASE.pow(i as u32);
+			let place = key/factor;
+			key -= place * factor;
+			th.set_state(place as u8);
+		}
 	}
 
 	pub fn update(&mut self, dt: f32) {

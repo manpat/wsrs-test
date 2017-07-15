@@ -111,6 +111,22 @@ impl ConnectionManager {
 		}
 	}
 
+	pub fn notify_auth_fail(&mut self, id: ConnectionID) {
+		use self::ConnectionState::*;
+
+		if let Some(ref mut con) = self.connections.iter_mut().find(|c| c.id == id) {
+			con.state = match con.state {
+				AttemptingAuth{attempts, waiting: true, ..} => 
+					NoAuth{attempts: attempts+1},
+
+				_ => {
+					println!("notify_auth_fail called on connection not waiting for auth - closing...");
+					AwaitingDeletion
+				},
+			};
+		}
+	}
+
 	pub fn flush(&mut self) {
 		self.connections.retain(|x| !x.is_awaiting_deletion());
 	}
@@ -126,15 +142,17 @@ impl ConnectionManager {
 	}
 
 	pub fn poll_auth_attempts(&mut self) -> Option<(ConnectionID, u32)> {
-		// self.connections.iter_mut()
-		// 	.filter(|c| matches_enum!(ConnectionState::AttemptingAuth{waiting: false, ..}, c.state))
-		// 	.next().as_mut()
-		// 	.map(|con| {
-		// 		let ConnectionState::AttemptingAuth{token, attempts, ..} = con.state;
-		// 		con.state = ConnectionState::AttemptingAuth{waiting: true, 	token, attempts};
-		// 		(con.id, token)
-		// 	})
-		None
+		self.connections.iter_mut()
+			.filter(|c| matches_enum!(ConnectionState::AttemptingAuth{waiting: false, ..}, c.state))
+			.next().as_mut()
+			.and_then(|con| {
+				if let ConnectionState::AttemptingAuth{token, attempts, ..} = con.state {
+					con.state = ConnectionState::AttemptingAuth{waiting: true, 	token, attempts};
+					Some((con.id, token))
+				} else {
+					None
+				}
+			})
 	}
 
 	pub fn send_to(&mut self, id: ConnectionID, p: &Packet) -> bool {
@@ -209,6 +227,7 @@ impl ConnectionManager {
 					con.state = ConnectionState::AwaitingNewSession
 				},
 				Packet::AttemptAuthSession(token) => {
+					println!("Client {} tried to auth with key '{}'", con.id, token);
 					// TODO: if token doesn't exist, bump attempt count and potentially terminate connection
 					// con.session_id = Some(token);
 					// con.state = ConnectionState::Ready;

@@ -119,6 +119,10 @@ impl Viewport {
 		Vec2::new(aspect * (sx * 2.0 - 1.0), 1.0 - sy * 2.0)
 	}
 
+	pub fn get_top_left(&self) -> Vec2 {
+		self.client_to_gl_coords(0.0, 0.0)
+	}
+
 	pub fn get_bottom_left(&self) -> Vec2 {
 		self.client_to_gl_coords(0.0, self.size.1 as f32)
 	}

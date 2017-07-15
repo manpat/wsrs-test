@@ -38,7 +38,7 @@ impl MainContext {
 	pub fn on_connect(&mut self) {
 		println!("Connected...");
 
-		self.connection.send(&Packet::RequestNewSession);
+		// self.connection.send(&Packet::RequestNewSession);
 	}
 	
 	pub fn on_disconnect(&mut self) {
@@ -53,12 +53,23 @@ impl MainContext {
 		let udt = (diff.subsec_nanos() / 1000);
 		let dt = udt as f32 / 1000_000.0;
 		self.auth_screen.update(dt);
+
+		use ui::AuthScreenAction as ASA;
+
+		match self.auth_screen.poll_actions() {
+			Some(ASA::TryAuth(key)) => {
+				println!("Really requesing auth {}", key);
+				self.connection.send(&Packet::AttemptAuthSession(key));
+			}
+
+			_ => {}
+		}
 	}
 
 	pub fn on_render(&mut self) {
 		self.render_ctx.fit_target_to_viewport();
 		self.render_state.set_viewport(&self.render_ctx.get_viewport());
-		
+
 		// TODO: pls no
 		self.auth_screen.viewport = self.render_ctx.get_viewport();
 
@@ -90,6 +101,7 @@ impl MainContext {
 			match packet {
 				Packet::AuthSuccessful(token) => {
 					println!("New Session: {}", token);
+					self.auth_screen.set_key(token);
 				},
 
 				_ => {}

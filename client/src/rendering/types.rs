@@ -1,6 +1,6 @@
 use easing::*;
 
-use std::ops::{Add, Sub};
+use std::ops::{Add, Sub, Mul};
 
 #[derive(Copy, Clone, Debug)]
 pub struct Vec2{pub x: f32, pub y: f32}
@@ -8,6 +8,7 @@ pub struct Vec2{pub x: f32, pub y: f32}
 impl Vec2 {
 	pub fn new(x: f32, y: f32) -> Vec2 { Vec2{x:x, y:y} }
 	pub fn zero() -> Vec2 { Vec2::new(0.0, 0.0) }
+	pub fn from_angle(th: f32) -> Vec2 { Vec2::new(th.cos(), th.sin()) }
 
 	pub fn to_tuple(self) -> (f32,f32) { (self.x, self.y) }
 
@@ -27,6 +28,13 @@ impl Sub for Vec2 {
 	type Output = Vec2;
 	fn sub(self, o: Vec2) -> Vec2 {
 		Vec2::new(self.x - o.x, self.y - o.y)
+	}
+}
+
+impl Mul<f32> for Vec2 {
+	type Output = Vec2;
+	fn mul(self, o: f32) -> Vec2 {
+		Vec2::new(self.x * o, self.y * o)
 	}
 }
 

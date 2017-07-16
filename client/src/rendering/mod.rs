@@ -4,6 +4,8 @@ use std::ffi::CString;
 use std::mem::uninitialized;
 
 #[link_args = "-s FULL_ES2=1"]
+extern {}
+
 pub mod gl {
 	#![allow(non_upper_case_globals)]
 	include!(concat!(env!("OUT_DIR"), "/gl_bindings.rs"));

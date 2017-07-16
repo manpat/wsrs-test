@@ -50,7 +50,7 @@ impl MainContext {
 		let diff = now - self.prev_frame;
 		self.prev_frame = now;
 
-		let udt = (diff.subsec_nanos() / 1000);
+		let udt = diff.subsec_nanos() / 1000;
 		let dt = udt as f32 / 1000_000.0;
 		self.auth_screen.update(dt);
 

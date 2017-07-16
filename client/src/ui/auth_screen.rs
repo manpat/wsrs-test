@@ -7,7 +7,8 @@ use std::f32::consts::PI;
 const KEY_LENGTH: u32 = 9;
 const KEY_BASE: u32 = 3;
 
-struct ClickyThing {
+#[derive(Copy, Clone)]
+struct KeyTumbler {
 	state: u8,
 
 	pos: f32,
@@ -15,20 +16,20 @@ struct ClickyThing {
 	prev_pos: f32,
 }
 
-impl ClickyThing {
-	fn new() -> ClickyThing {
-		ClickyThing {
+impl KeyTumbler {
+	fn new() -> KeyTumbler {
+		KeyTumbler {
 			state: 1,
 
-			pos: 0.0,
+			pos: 1.0,
 			anim_phase: 0.0,
-			prev_pos: 0.0,
+			prev_pos: 1.0,
 		}
 	}
 
 	fn update(&mut self, dt: f32) {
 		let target_pos = self.state as f32;
-		self.pos = self.anim_phase.ease_back_out(self.prev_pos, target_pos, 0.6);
+		self.pos = self.anim_phase.ease_back_out(self.prev_pos, target_pos, 0.8);
 
 		self.anim_phase += dt;
 	}
@@ -42,12 +43,12 @@ impl ClickyThing {
 
 #[derive(Copy, Clone, Debug)]
 pub enum AuthScreenAction {
-	// RequestNewSession,
+	RequestNewSession,
 	TryAuth(u32),
 }
 
 pub struct AuthScreen {
-	clicky_things: Vec<ClickyThing>,
+	key_tumblers: [KeyTumbler; KEY_LENGTH as usize],
 	phase: f32,
 
 	pub viewport: Viewport,
@@ -58,13 +59,8 @@ pub struct AuthScreen {
 
 impl AuthScreen {
 	pub fn new() -> Self {
-		let mut clicky_things = Vec::with_capacity(KEY_LENGTH as usize);
-		for i in 0..KEY_LENGTH {
-			clicky_things.push(ClickyThing::new());
-		}
-
 		AuthScreen {
-			clicky_things,
+			key_tumblers: [KeyTumbler::new(); KEY_LENGTH as usize],
 			phase: 0.0,
 
 			viewport: Viewport::new(),
@@ -78,9 +74,7 @@ impl AuthScreen {
 		let click_pos = Vec2::new(x, y);
 
 		let increment = PI * 2.0 / KEY_LENGTH as f32;
-		let th_start = increment/2.0 + PI / 2.0;
-		let r = 0.5;
-		let click_zone = 0.13;
+		let th_start = increment/2.0 + PI/2.0;
 
 		let mut key_changed = false;
 
@@ -91,7 +85,7 @@ impl AuthScreen {
 			let segment = (angle - th_start) / increment + 0.5 + KEY_LENGTH as f32;
 			let segment = segment as u32 % KEY_LENGTH;
 
-			let thing = &mut self.clicky_things[segment as usize];
+			let thing = &mut self.key_tumblers[segment as usize];
 
 			let nstate = (thing.state + 1)%KEY_BASE as u8;
 			thing.set_state(nstate);
@@ -130,33 +124,10 @@ impl AuthScreen {
 		action
 	}
 
-	pub fn calculate_key(&self) -> u32 {
-		use std;
-		assert!(KEY_BASE.pow(KEY_LENGTH) < std::u32::MAX);
-
-		self.clicky_things.iter().enumerate().fold(0, |acc, (i, th)| {
-			assert!((th.state as u32) < KEY_BASE);
-			
-			acc + th.state as u32 * KEY_BASE.pow(i as u32)
-		})
-	}
-
-	pub fn set_key(&mut self, mut key: u32) {
-		let max_key = KEY_BASE.pow(KEY_LENGTH);
-		assert!(key < max_key);
-
-		for (i, mut th) in self.clicky_things.iter_mut().enumerate().rev() {
-			let factor = KEY_BASE.pow(i as u32);
-			let place = key/factor;
-			key -= place * factor;
-			th.set_state(place as u8);
-		}
-	}
-
 	pub fn update(&mut self, dt: f32) {
 		self.phase += dt;
 
-		for thing in &mut self.clicky_things {
+		for thing in &mut self.key_tumblers {
 			thing.update(dt);
 		}
 
@@ -164,28 +135,21 @@ impl AuthScreen {
 	}
 
 	fn render_key(&self, state: &mut RenderState) {
-		let main_shape_segs = 30;
+		let main_shape_segs = 18;
 
-		state.start_stencil_write(1, 0x1);
-		state.build_poly(Vec2::new(0.0, 0.0), Color::white(), main_shape_segs, 0.45);
+		// Main ring
+		state.build_ring(Vec2::new(0.0, 0.0), Color::grey(0.25), main_shape_segs, 0.05, 0.45);
 
-		state.start_stencilled_draw(StencilFunc::NotEqual, 1, 0x1);
-		state.build_poly(Vec2::new(0.0, 0.0), Color::grey(0.25), main_shape_segs, 0.5);
-
-		state.start_stencil_write(2, 0x2);
-		state.build_poly(Vec2::new(0.0, 0.0), Color::white(), main_shape_segs, 0.14);
-
-		state.start_stencilled_draw(StencilFunc::NotEqual, 2, 0x2);
-		state.build_poly(Vec2::new(0.0, 0.0), Color::rgb(0.4, 0.9, 0.6), main_shape_segs, 0.2);
-
-		state.start_stencil_write(1, 0xff);
+		// Main circle -> stencil
+		state.start_stencil_replace(1, 0xff);
 		state.build_poly(Vec2::new(0.0, 0.0), Color::white(), main_shape_segs, 0.5);
 
 		let increment = PI * 2.0 / KEY_LENGTH as f32;
 		let th_start = increment/2.0 + PI / 2.0;
 
-		state.start_stencilled_draw(StencilFunc::Equal, 1, 0x1);
-		for (i, thing) in self.clicky_things.iter().enumerate() {
+		// Tumblers inside the main circle
+		state.start_stencilled_draw(StencilFunc::Equal, 1, 1);
+		for (i, thing) in self.key_tumblers.iter().enumerate() {
 			let th = i as f32 * increment + th_start;
 			let r = 0.5 - (1.0 - thing.pos) * 0.15;
 
@@ -194,8 +158,9 @@ impl AuthScreen {
 			state.build_poly(offset, Color::grey(0.5), 17, 0.06);
 		}
 		
-		state.start_stencilled_draw(StencilFunc::NotEqual, 1, 0x1);
-		for (i, thing) in self.clicky_things.iter().enumerate() {
+		// Tumblers outside the main circle
+		state.start_stencilled_draw(StencilFunc::NotEqual, 1, 1);
+		for (i, thing) in self.key_tumblers.iter().enumerate() {
 			let th = i as f32 * increment + th_start;
 			let r = 0.5 + (thing.pos - 2.3) * 0.1;
 
@@ -204,7 +169,22 @@ impl AuthScreen {
 			state.build_poly(offset, Color::grey(0.35), 19, 0.13);
 		}
 
-		state.stop_stencil_draw();		
+		// Status ring -> stencil
+		state.start_stencil_replace(2, 0xff);
+		state.build_ring(Vec2::new(0.0, 0.0), Color::white(), main_shape_segs, 0.08, 0.12);
+
+		// Status ring fill
+		state.start_stencilled_draw(StencilFunc::Equal, 2, 0xff);
+		let ph = self.phase * PI * 2.0;
+		let o = (ph/5.0).sin();
+		let o2 = (ph/7.0).sin();
+		let o3 = (ph/11.0).cos();
+		state.build_poly(Vec2::new(o3*0.05,-0.2 + o*0.02), Color::rgb(0.8, 0.7, 0.4), 4, 0.3);
+		state.build_poly(Vec2::new(o2*0.03-0.2, 0.05 - o3*0.05), Color::rgb(0.4, 0.6, 0.9), main_shape_segs, 0.2);
+		state.build_poly(Vec2::new(0.15 + o3 *0.1, o2 * 0.01 + o3*0.05), Color::rgb(0.4, 0.9, 0.6), main_shape_segs, 0.2);
+		state.build_poly(Vec2::new(0.1 + o*0.03, 0.2), Color::rgb(0.9, 0.4, 0.6), main_shape_segs, 0.2);
+
+		state.stop_stencil_draw();
 	}
 
 	pub fn render(&self, mut state: &mut RenderState) {
@@ -223,5 +203,28 @@ impl AuthScreen {
 		tmp.render(&tmpstate);
 
 		util::save_canvas("downloadcanvas");
+	}
+
+	pub fn calculate_key(&self) -> u32 {
+		use std;
+		assert!(KEY_BASE.pow(KEY_LENGTH) < std::u32::MAX);
+
+		self.key_tumblers.iter().enumerate().fold(0, |acc, (i, th)| {
+			assert!((th.state as u32) < KEY_BASE);
+			
+			acc + th.state as u32 * KEY_BASE.pow(i as u32)
+		})
+	}
+
+	pub fn set_key(&mut self, mut key: u32) {
+		let max_key = KEY_BASE.pow(KEY_LENGTH);
+		assert!(key < max_key);
+
+		for (i, mut th) in self.key_tumblers.iter_mut().enumerate().rev() {
+			let factor = KEY_BASE.pow(i as u32);
+			let place = key/factor;
+			key -= place * factor;
+			th.set_state(place as u8);
+		}
 	}
 }

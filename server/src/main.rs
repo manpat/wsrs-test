@@ -123,6 +123,7 @@ fn network_loop(rx: mpsc::Receiver<NetworkMessage>, tx: mpsc::Sender<SimulationM
 
 				NM::AuthFail(id) => {
 					connections.notify_auth_fail(id);
+					packet_queue.push((Some(id), Packet::AuthFail));
 				}
 			}
 		}
@@ -140,15 +141,11 @@ fn network_loop(rx: mpsc::Receiver<NetworkMessage>, tx: mpsc::Sender<SimulationM
 		connections.flush();
 
 		while let Some(id) = connections.poll_new_sessions() {
-			use SimulationMessage as SM;
-
-			tx.send(SM::RequestNewSession(id)).unwrap();
+			tx.send(SimulationMessage::RequestNewSession(id)).unwrap();
 		}
 
 		while let Some((id, token)) = connections.poll_auth_attempts() {
-			use SimulationMessage as SM;
-
-			tx.send(SM::AttemptAuthSession(id, token)).unwrap();
+			tx.send(SimulationMessage::AttemptAuthSession(id, token)).unwrap();
 		}
 
 		for &(id, ref p) in &packet_queue {

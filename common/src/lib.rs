@@ -1,4 +1,9 @@
 pub mod world;
+pub mod math;
+pub mod easing;
+
+pub use easing::*;
+pub use math::*;
 
 #[derive(Clone)]
 pub enum Packet {
@@ -10,6 +15,7 @@ pub enum Packet {
 	// Server -> Client
 	AuthSuccessful(u32),
 	AuthFail,
+	NewSession(u32),
 }
 
 pub fn write_u32_to_slice(dst: &mut [u8], value: u32) {
@@ -58,6 +64,7 @@ impl Packet {
 
 			0x80 => Some(Packet::AuthSuccessful(read_u32_from_slice(&src[1..]))),
 			0x81 => Some(Packet::AuthFail),
+			0x82 => Some(Packet::NewSession(read_u32_from_slice(&src[1..]))),
 			_ => None
 		}
 	}
@@ -88,6 +95,10 @@ impl Packet {
 				5
 			},
 			Packet::AuthFail => 1,
+			Packet::NewSession(tok) => {
+				write_u32_to_slice(&mut dst[1..], tok);
+				5
+			},
 		}
 	}
 
@@ -101,6 +112,7 @@ impl Packet {
 			// Server -> Client
 			Packet::AuthSuccessful(_) => 0x80,
 			Packet::AuthFail => 0x81,
+			Packet::NewSession(_) => 0x82,
 		}
 	}
 

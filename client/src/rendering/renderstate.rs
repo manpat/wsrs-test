@@ -72,6 +72,7 @@ impl StencilFunc {
 #[derive(Copy, Clone)]
 enum Command {
 	Geom{start: u32, count: u32},
+	FullscreenQuad(Color),
 	Stencil{
 		func: StencilFunc,
 		reference: u8,
@@ -98,13 +99,14 @@ pub struct RenderState {
 
 	vbo: u32,
 	ebo: u32,
+	fs_quad: u32,
 }
 
 #[allow(dead_code)]
 impl RenderState {
 	pub fn new() -> Self {
-		let mut vbos = [0u32; 2];
-		unsafe { gl::GenBuffers(2, vbos.as_mut_ptr()); }
+		let mut vbos = [0u32; 3];
+		unsafe { gl::GenBuffers(3, vbos.as_mut_ptr()); }
 
 		RenderState {
 			viewport: Viewport::new(),
@@ -115,8 +117,10 @@ impl RenderState {
 			indices: Vec::new(),
 			render_start_idx: 0,
 
-			vbo: vbos[0], 
+			vbo: vbos[0],
 			ebo: vbos[1],
+
+			fs_quad: vbos[2],
 		}
 	}
 
@@ -151,25 +155,56 @@ impl RenderState {
 		// TODO: assert that our buffers were generated in the current webgl context
 
 		unsafe {
-			use std::mem::{transmute, size_of};
+			use std::mem::{transmute, size_of, size_of_val};
 
 			let vert_size = size_of::<Vertex>();
 			let short_size = size_of::<u16>();
 			gl::EnableVertexAttribArray(0);
 			gl::EnableVertexAttribArray(1);
 
+			gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, self.ebo);
+			gl::BufferData(gl::ELEMENT_ARRAY_BUFFER, (self.indices.len()*short_size) as isize, transmute(self.indices.as_ptr()), gl::STREAM_DRAW);
+
+			gl::BindBuffer(gl::ARRAY_BUFFER, self.fs_quad);
+
 			gl::BindBuffer(gl::ARRAY_BUFFER, self.vbo);
 			gl::BufferData(gl::ARRAY_BUFFER, (self.verts.len()*vert_size) as isize, transmute(self.verts.as_ptr()), gl::STREAM_DRAW);
 			gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(0));
 			gl::VertexAttribPointer(1, 4, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(12));
 
-			gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, self.ebo);
-			gl::BufferData(gl::ELEMENT_ARRAY_BUFFER, (self.indices.len()*short_size) as isize, transmute(self.indices.as_ptr()), gl::STREAM_DRAW);
+			let mut fs_quad_bound = false;
 
 			for c in &self.commands {
 				match *c {
-					Command::Geom{start, count} =>
-						gl::DrawElements(gl::TRIANGLES, count as i32, gl::UNSIGNED_SHORT, transmute(start*short_size as u32)),
+					Command::Geom{start, count} => {
+						if fs_quad_bound {
+							fs_quad_bound = false;
+							gl::BindBuffer(gl::ARRAY_BUFFER, self.vbo);
+							gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(0));
+							gl::VertexAttribPointer(1, 4, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(12));
+						}
+
+						gl::DrawElements(gl::TRIANGLES, count as i32, gl::UNSIGNED_SHORT, transmute(start*short_size as u32));
+					},
+
+					Command::FullscreenQuad(color) => {
+						if !fs_quad_bound {
+							fs_quad_bound = true;
+							gl::BindBuffer(gl::ARRAY_BUFFER, self.fs_quad);
+							gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(0));
+							gl::VertexAttribPointer(1, 4, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(12));
+						}
+
+						let fsquad = [
+							Vertex::new(self.viewport.get_bottom_left(), color),
+							Vertex::new(self.viewport.get_top_left(), color),
+							Vertex::new(self.viewport.get_top_right(), color),
+							Vertex::new(self.viewport.get_bottom_right(), color),
+						];
+
+						gl::BufferData(gl::ARRAY_BUFFER, size_of_val(&fsquad) as isize, transmute(fsquad.as_ptr()), gl::STREAM_DRAW);
+						gl::DrawArrays(gl::TRIANGLE_FAN, 0, 4);
+					},
 
 					Command::Stencil{func, reference, mask, stencil_fail, depth_fail, pass} => {
 						gl::StencilFunc(func.to_gl(), reference as i32, mask as u32);
@@ -196,7 +231,11 @@ impl RenderState {
 		}
 	}
 
-	pub fn start_stencil_write(&mut self, reference: u8, mask: u8, so: StencilOp) {
+	pub fn draw_fullscreen_quad(&mut self, col: Color) {
+		self.commands.push(Command::FullscreenQuad(col));
+	}
+
+	pub fn start_stencil_write_if(&mut self, reference: u8, mask: u8, so: StencilOp, sf: StencilFunc) {
 		use self::StencilOp as SO;
 
 		self.flush_geom();
@@ -206,7 +245,7 @@ impl RenderState {
 		self.commands.push(Command::DepthWrite(false));
 
 		self.commands.push(Command::Stencil {
-			func: StencilFunc::Always,
+			func: sf,
 			reference, mask,
 
 			stencil_fail: SO::Keep,
@@ -215,19 +254,27 @@ impl RenderState {
 		});
 	}
 
-	pub fn start_stencil_replace(&mut self, reference: u8, mask: u8) {
-		self.start_stencil_write(reference, mask, StencilOp::Replace);
+	pub fn start_stencil_write(&mut self, reference: u8, mask: u8, so: StencilOp) {
+		self.start_stencil_write_if(reference, mask, so, StencilFunc::Always);
 	}
 
-	pub fn start_stencil_erase(&mut self, mask: u8) {
-		self.start_stencil_write(0, mask, StencilOp::Zero);
+	pub fn start_stencil_replace(&mut self, reference: u8) {
+		self.start_stencil_write(reference, 0xff, StencilOp::Replace);
 	}
 
-	pub fn start_stencil_invert(&mut self, mask: u8) {
-		self.start_stencil_write(0, mask, StencilOp::Invert);
+	pub fn start_stencil_replace_if(&mut self, func: StencilFunc, reference: u8) {
+		self.start_stencil_write_if(reference, 0xff, StencilOp::Replace, func);
 	}
 
-	pub fn start_stencilled_draw(&mut self, func: StencilFunc, reference: u8, mask: u8) {
+	pub fn start_stencil_erase(&mut self) {
+		self.start_stencil_write(0, 0xff, StencilOp::Zero);
+	}
+
+	pub fn start_stencil_invert(&mut self) {
+		self.start_stencil_write(0, 0xff, StencilOp::Invert);
+	}
+
+	pub fn start_stencilled_draw(&mut self, func: StencilFunc, reference: u8) {
 		use self::StencilOp as SO;
 
 		self.flush_geom();
@@ -237,7 +284,7 @@ impl RenderState {
 		self.commands.push(Command::DepthWrite(true));
 
 		self.commands.push(Command::Stencil {
-			func, reference, mask,
+			func, reference, mask: 0xff,
 
 			stencil_fail: SO::Keep,
 			depth_fail: SO::Keep,

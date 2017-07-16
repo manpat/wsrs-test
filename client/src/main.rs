@@ -1,4 +1,5 @@
 #![feature(link_args)]
+#![feature(ord_max_min)]
 
 extern crate common;
 extern crate rand;
@@ -12,7 +13,6 @@ mod rendering;
 mod connection;
 
 mod ui;
-mod easing;
 
 use context::*;
 

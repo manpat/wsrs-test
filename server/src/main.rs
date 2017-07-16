@@ -5,6 +5,7 @@ mod ws;
 
 mod world;
 
+extern crate rand;
 extern crate sha1;
 extern crate base64;
 extern crate flate2;
@@ -109,9 +110,10 @@ fn network_loop(rx: mpsc::Receiver<NetworkMessage>, tx: mpsc::Sender<SimulationM
 
 			match msg {
 				NM::NewConnection(stream) => connections.register_connection(stream),
+
 				NM::NewSession(id, token) => {
-					if connections.imbue_session(id, token) {
-						packet_queue.push((Some(id), Packet::AuthSuccessful(token)));
+					if connections.notify_new_session(id) {
+						packet_queue.push((Some(id), Packet::NewSession(token)));
 					}
 				},
 
@@ -180,8 +182,12 @@ fn sim_loop(tx: mpsc::Sender<NetworkMessage>, rx: mpsc::Receiver<SimulationMessa
 				SM::RequestNewSession(con_id) => {
 					// Create new session
 					println!("New Session requested for {}", con_id);
-					let new_session_id = 123;
-					tx.send(NM::NewSession(con_id, new_session_id)).unwrap();
+
+					let max_key = 3u32.pow(9);
+					let random_key = rand::random::<u32>() % max_key;
+					// TODO: not this
+					
+					tx.send(NM::NewSession(con_id, random_key)).unwrap();
 				},
 
 				SM::AttemptAuthSession(con_id, token) => {

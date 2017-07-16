@@ -5,6 +5,7 @@ use ws;
 
 pub type ConnectionID = u32;
 
+#[derive(Debug)]
 pub enum ConnectionState {
 	NoAuth{attempts: i32},
 	AttemptingAuth{attempts: i32, token: u32, waiting: bool},
@@ -15,7 +16,7 @@ pub enum ConnectionState {
 }
 
 macro_rules! matches_enum {
-    ($p:pat, $v:expr) => {
+    ($v:expr, $p:pat) => {
     	match $v {
     		$p => true,
     		_ => false,
@@ -111,6 +112,24 @@ impl ConnectionManager {
 		}
 	}
 
+	pub fn notify_new_session(&mut self, id: ConnectionID) -> bool {
+		use self::ConnectionState::*;
+
+		let mut con = self.connections.iter_mut().find(|c| c.id == id);
+
+		if let Some(ref mut con) = con {
+			if matches_enum!(con.state, NewSessionRequested) {
+				// TODO: preserve attempts
+				con.state = NoAuth{attempts: 0};
+				con.session_id = None;
+
+				return true;
+			}
+		}
+
+		false
+	}
+
 	pub fn notify_auth_fail(&mut self, id: ConnectionID) {
 		use self::ConnectionState::*;
 
@@ -143,7 +162,7 @@ impl ConnectionManager {
 
 	pub fn poll_auth_attempts(&mut self) -> Option<(ConnectionID, u32)> {
 		self.connections.iter_mut()
-			.filter(|c| matches_enum!(ConnectionState::AttemptingAuth{waiting: false, ..}, c.state))
+			.filter(|c| matches_enum!(c.state, ConnectionState::AttemptingAuth{waiting: false, ..}))
 			.next().as_mut()
 			.and_then(|con| {
 				if let ConnectionState::AttemptingAuth{token, attempts, ..} = con.state {
@@ -226,6 +245,7 @@ impl ConnectionManager {
 				Packet::RequestNewSession => {
 					con.state = ConnectionState::AwaitingNewSession
 				},
+
 				Packet::AttemptAuthSession(token) => {
 					println!("Client {} tried to auth with key '{}'", con.id, token);
 					// TODO: if token doesn't exist, bump attempt count and potentially terminate connection

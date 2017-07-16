@@ -23,6 +23,7 @@ pub struct RenderingContext {
 
 	viewport: Viewport,
 	program: u32,
+	view_loc: i32,
 }
 
 impl RenderingContext {
@@ -45,6 +46,7 @@ impl RenderingContext {
 			canvas_id: canvas_id.to_string(),
 			viewport: Viewport::new(),
 			program: 0,
+			view_loc: 0,
 		};
 
 		assert!(ctx.make_current(), "Failed to make WebGL context current");
@@ -106,6 +108,7 @@ impl RenderingContext {
 
 			gl::UseProgram(program);
 			ctx.program = program;
+			ctx.view_loc = gl::GetUniformLocation(program, CString::new("view").unwrap().as_ptr());
 		}
 
 		ctx
@@ -127,7 +130,7 @@ impl RenderingContext {
 		js! { (w) b"Module.canvas.width = Module.canvas.style.width = $0\0" };
 		js! { (h) b"Module.canvas.height = Module.canvas.style.height = $0\0" };
 
-		self.viewport.size = (w,h);
+		self.viewport.size = Vec2i::new(w,h);
 	}
 
 	pub fn fit_target_to_viewport(&mut self) {
@@ -137,7 +140,7 @@ impl RenderingContext {
 		let w = js! { b"return (Module.canvas.width = Module.canvas.style.width = window.innerWidth)\0" };
 		let h = js! { b"return (Module.canvas.height = Module.canvas.style.height = window.innerHeight)\0" };
 
-		self.viewport.size = (w,h);
+		self.viewport.size = Vec2i::new(w,h);
 	}
 
 	pub fn get_viewport(&self) -> Viewport {
@@ -163,11 +166,9 @@ impl RenderingContext {
 		unsafe {
 			gl::ClearColor(0.1, 0.1, 0.1, 1.0);
 			gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT);
-			gl::Viewport(0, 0, self.viewport.size.0, self.viewport.size.1);
+			gl::Viewport(0, 0, self.viewport.size.x, self.viewport.size.y);
 
-			let viewloc = gl::GetUniformLocation(self.program, CString::new("view").unwrap().as_ptr());
-
-			gl::UniformMatrix4fv(viewloc, 1, 0, matrix.as_ptr());
+			gl::UniformMatrix4fv(self.view_loc, 1, 0, matrix.as_ptr());
 		}
 
 		state.render();

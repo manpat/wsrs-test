@@ -1,42 +1,5 @@
-use easing::*;
-
-use std::ops::{Add, Sub, Mul};
-
-#[derive(Copy, Clone, Debug)]
-pub struct Vec2{pub x: f32, pub y: f32}
-
-impl Vec2 {
-	pub fn new(x: f32, y: f32) -> Vec2 { Vec2{x:x, y:y} }
-	pub fn zero() -> Vec2 { Vec2::new(0.0, 0.0) }
-	pub fn from_angle(th: f32) -> Vec2 { Vec2::new(th.cos(), th.sin()) }
-
-	pub fn to_tuple(self) -> (f32,f32) { (self.x, self.y) }
-
-	pub fn length(self) -> f32 {
-		(self.x*self.x + self.y*self.y).sqrt()
-	}
-}
-
-impl Add for Vec2 {
-	type Output = Vec2;
-	fn add(self, o: Vec2) -> Vec2 {
-		Vec2::new(self.x + o.x, self.y + o.y)
-	}
-}
-
-impl Sub for Vec2 {
-	type Output = Vec2;
-	fn sub(self, o: Vec2) -> Vec2 {
-		Vec2::new(self.x - o.x, self.y - o.y)
-	}
-}
-
-impl Mul<f32> for Vec2 {
-	type Output = Vec2;
-	fn mul(self, o: f32) -> Vec2 {
-		Vec2::new(self.x * o, self.y * o)
-	}
-}
+pub use common::math::*;
+pub use common::easing::*;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Color {
@@ -68,7 +31,7 @@ impl Color {
 }
 
 macro_rules! impl_ease_for_color {
-    ($func: ident) => (
+	($func: ident) => (
 		fn $func(&self, start: Color, end: Color, duration: f32) -> Color {
 			Color {
 				r: self.$func(start.r, end.r, duration),
@@ -77,7 +40,7 @@ macro_rules! impl_ease_for_color {
 				a: self.$func(start.a, end.a, duration),
 			}
 		}
-    )
+	)
 }
 
 impl Ease<Color> for f32 {
@@ -106,33 +69,42 @@ impl Ease<Color> for f32 {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Viewport {
-	pub size: (i32, i32),
+	pub size: Vec2i,
 }
 
 impl Viewport {
 	pub fn new() -> Viewport {
-		Viewport{size: (0, 0)}
+		Viewport{ size: Vec2i::zero() }
 	}
 
 	pub fn get_aspect(&self) -> f32 {
-		let (sw, sh) = self.size;
+		let (sw, sh) = self.size.to_tuple();
 		sw as f32 / sh as f32
 	}
 
-	pub fn client_to_gl_coords(&self, x: f32, y: f32) -> Vec2 {
-		let (sw, sh) = self.size;
+	pub fn client_to_gl_coords(&self, pos: Vec2i) -> Vec2 {
+		let (sw, sh) = self.size.to_vec2().to_tuple();
+		let pos = pos.to_vec2();
 		let aspect = self.get_aspect();
 
-		let (sx, sy) = (x / sw as f32, y / sh as f32);
+		let (sx, sy) = (pos.x / sw, pos.y / sh);
 		Vec2::new(aspect * (sx * 2.0 - 1.0), 1.0 - sy * 2.0)
 	}
 
 	pub fn get_top_left(&self) -> Vec2 {
-		self.client_to_gl_coords(0.0, 0.0)
+		self.client_to_gl_coords(Vec2i::zero())
 	}
 
 	pub fn get_bottom_left(&self) -> Vec2 {
-		self.client_to_gl_coords(0.0, self.size.1 as f32)
+		self.client_to_gl_coords(Vec2i::new(0, self.size.y))
+	}
+
+	pub fn get_top_right(&self) -> Vec2 {
+		self.client_to_gl_coords(Vec2i::new(self.size.x, 0))
+	}
+
+	pub fn get_bottom_right(&self) -> Vec2 {
+		self.client_to_gl_coords(self.size)
 	}
 }
 

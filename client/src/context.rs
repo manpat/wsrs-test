@@ -5,6 +5,8 @@ use connection::Connection;
 use common::*;
 use ui;
 
+const DRAG_THRESHOLD: f32 = 5.0;
+
 pub struct MainContext {
 	pub connection: Box<Connection>,
 
@@ -14,6 +16,14 @@ pub struct MainContext {
 	pub render_state: RenderState,
 
 	pub auth_screen: ui::AuthScreen,
+
+	pub click_start_pos: Vec2i,
+	pub is_dragging: bool,
+	pub is_mouse_down: bool,
+
+	// hack hack hack
+	pub touch_id: Option<i32>,
+	pub touch_enabled: bool,
 } 
 
 impl MainContext {
@@ -32,6 +42,13 @@ impl MainContext {
 			render_state: RenderState::new(),
 
 			auth_screen: ui::AuthScreen::new(),
+
+			click_start_pos: Vec2i::zero(),
+			is_dragging: false,
+			is_mouse_down: false,
+
+			touch_id: None,
+			touch_enabled: false,
 		}
 	}
 
@@ -62,6 +79,11 @@ impl MainContext {
 				self.connection.send(&Packet::AttemptAuthSession(key));
 			}
 
+			Some(ASA::RequestNewSession) => {
+				println!("Requesting new session");
+				self.connection.send(&Packet::RequestNewSession);
+			}
+
 			_ => {}
 		}
 	}
@@ -80,11 +102,50 @@ impl MainContext {
 		self.render_ctx.render(&self.render_state);
 	}
 
-	pub fn on_click(&mut self, x: i32, y: i32) {
-		let (sx, sy) = self.render_ctx.get_viewport()
-			.client_to_gl_coords(x as f32, y as f32)
-			.to_tuple();
-		self.auth_screen.on_click(sx, sy);
+	pub fn on_mouse_down(&mut self, x: i32, y: i32, button: u16) {
+		// Only allow left click
+		if button != 0 { return }
+
+		self.click_start_pos = Vec2i::new(x, y);
+		self.is_mouse_down = true;
+	}
+
+	pub fn on_mouse_up(&mut self, x: i32, y: i32, button: u16) {
+		// Only allow left click
+		if button != 0 { return }
+
+		let pos = Vec2i::new(x, y);
+		let spos = self.render_ctx.get_viewport()
+			.client_to_gl_coords(pos);
+
+		if !self.is_dragging {
+			self.auth_screen.on_click(spos);
+		} else {
+			self.auth_screen.on_drag_end(spos);
+		}
+
+		self.is_dragging = false;
+		self.is_mouse_down = false;
+	}
+
+	pub fn on_mouse_move(&mut self, x: i32, y: i32) {
+		let pos = Vec2i::new(x, y);
+		let spos = self.render_ctx.get_viewport()
+			.client_to_gl_coords(pos);
+
+		if self.is_mouse_down && (pos - self.click_start_pos).length() > DRAG_THRESHOLD {
+			if !self.is_dragging {
+				self.is_dragging = true;
+
+				self.auth_screen.on_drag_start(spos);
+				// Cancel any clicks
+			} else {
+				self.auth_screen.on_drag(spos);
+			}
+
+		} else {
+			// Send regular ol' mouse move
+		}
 	}
 
 	pub fn process_packets(&mut self) {
@@ -100,7 +161,18 @@ impl MainContext {
 		for packet in self.connection.packet_queue.clone() {
 			match packet {
 				Packet::AuthSuccessful(token) => {
-					println!("New Session: {}", token);
+					println!("Auth success: {}", token);
+					self.auth_screen.on_auth_success();
+					// Hide screen
+				},
+
+				Packet::AuthFail => {
+					println!("Auth fail");
+					self.auth_screen.on_auth_fail();
+				},
+
+				Packet::NewSession(token) => {
+					println!("New session: {}", token);
 					self.auth_screen.set_key(token);
 				},
 

@@ -8,7 +8,26 @@ struct EmscriptenMouseEvent {
 	ts: f64,
 	_screen: [i32; 2],
 	x: i32, y: i32,
+	_modifiers: [i32; 4],
+	button: u16,
 	// ... I don't care about the rest of these fields
+}
+
+#[repr(C)]
+struct EmscriptenTouchPoint {
+	id: i32,
+	_screen: [i32; 2],
+	x: i32, y: i32,
+	_page: [i32; 2],
+	is_changed: i32,
+
+}
+
+#[repr(C)]
+struct EmscriptenTouchEvent {
+	num_touches: i32,
+	_modifiers: [i32; 4],
+	touches: [EmscriptenTouchPoint; 32],
 }
 
 #[repr(C)]
@@ -31,6 +50,7 @@ pub struct EmscriptenWebGLContextAttributes {
 pub type EmWebGLContext = i32;
 pub type EmSocketCallback = extern fn(fd: i32, ud: *mut u8);
 type EmMouseCallback = extern fn(etype: i32, evt: *const EmscriptenMouseEvent, ud: *mut u8) -> i32;
+type EmTouchCallback = extern fn(etype: i32, evt: *const EmscriptenTouchEvent, ud: *mut u8) -> i32;
 type EmArgCallback = extern fn(ud: *mut u8);
 
 #[allow(dead_code, improper_ctypes)]
@@ -42,7 +62,14 @@ extern {
 	pub fn emscripten_set_socket_close_callback(ud: *mut u8, callback: EmSocketCallback);
 	pub fn emscripten_set_socket_message_callback(ud: *mut u8, callback: EmSocketCallback);
 
-	fn emscripten_set_click_callback(target: *const u8, ud: *mut u8, useCapture: i32, cb: EmMouseCallback);
+	fn emscripten_set_mousedown_callback(target: *const u8, ud: *mut u8, useCapture: i32, cb: EmMouseCallback);
+	fn emscripten_set_mouseup_callback(target: *const u8, ud: *mut u8, useCapture: i32, cb: EmMouseCallback);
+	fn emscripten_set_mousemove_callback(target: *const u8, ud: *mut u8, useCapture: i32, cb: EmMouseCallback);
+
+	fn emscripten_set_touchstart_callback(target: *const u8, ud: *mut u8, useCapture: i32, cb: EmTouchCallback);
+	fn emscripten_set_touchend_callback(target: *const u8, ud: *mut u8, useCapture: i32, cb: EmTouchCallback);
+	fn emscripten_set_touchmove_callback(target: *const u8, ud: *mut u8, useCapture: i32, cb: EmTouchCallback);
+	fn emscripten_set_touchcancel_callback(target: *const u8, ud: *mut u8, useCapture: i32, cb: EmTouchCallback);
 
 	pub fn emscripten_async_call(callback: EmArgCallback, ud: *mut u8, millis: i32);
 	pub fn emscripten_asm_const_int(s: *const u8, ...) -> i32;
@@ -101,8 +128,18 @@ macro_rules! js {
 
 
 pub fn start(ctx_ptr: *mut MainContext) {
+	js!{ b"document.addEventListener('contextmenu', function(e) {console.log(e); e.preventDefault(); return false; })\0" };
+
 	unsafe {
-		emscripten_set_click_callback(ptr::null(), ctx_ptr as *mut u8, 0, on_click);
+		emscripten_set_mousedown_callback(ptr::null(), ctx_ptr as *mut u8, 0, on_mouse_down);
+		emscripten_set_mouseup_callback(ptr::null(), ctx_ptr as *mut u8, 0, on_mouse_up);
+		emscripten_set_mousemove_callback(ptr::null(), ctx_ptr as *mut u8, 0, on_mouse_move);
+
+		emscripten_set_touchstart_callback(ptr::null(), ctx_ptr as *mut u8, 0, on_touch_down);
+		emscripten_set_touchend_callback(ptr::null(), ctx_ptr as *mut u8, 0, on_touch_up);
+		emscripten_set_touchmove_callback(ptr::null(), ctx_ptr as *mut u8, 0, on_touch_move);
+		emscripten_set_touchcancel_callback(ptr::null(), ctx_ptr as *mut u8, 0, on_touch_up);
+
 		emscripten_set_main_loop_arg(on_update, ctx_ptr as *mut u8, 0, 1);
 	}
 }
@@ -115,15 +152,89 @@ extern fn on_update(ud: *mut u8) {
 	ctx.on_render();
 }
 
-extern fn on_click(_: i32, ev: *const EmscriptenMouseEvent, ud: *mut u8) -> i32 {
+extern fn on_mouse_down(_: i32, ev: *const EmscriptenMouseEvent, ud: *mut u8) -> i32 {
 	let mut ctx: &mut MainContext = unsafe{ transmute(ud) };
+	if ctx.touch_enabled { return 0 }
 
-	let (x, y) = unsafe {
-		let ev = &*ev;
-		(ev.x, ev.y)
-	};
-
-	ctx.on_click(x, y);
+	let ev = unsafe { &*ev };
+	ctx.on_mouse_down(ev.x, ev.y, ev.button);
 
 	1
+}
+
+extern fn on_mouse_up(_: i32, ev: *const EmscriptenMouseEvent, ud: *mut u8) -> i32 {
+	let mut ctx: &mut MainContext = unsafe{ transmute(ud) };
+	if ctx.touch_enabled { return 0 }
+
+	let ev = unsafe { &*ev };
+	ctx.on_mouse_up(ev.x, ev.y, ev.button);
+
+	1
+}
+
+extern fn on_mouse_move(_: i32, ev: *const EmscriptenMouseEvent, ud: *mut u8) -> i32 {
+	let mut ctx: &mut MainContext = unsafe{ transmute(ud) };
+	if ctx.touch_enabled { return 0 }
+
+	let ev = unsafe { &*ev };
+	ctx.on_mouse_move(ev.x, ev.y);
+
+	1
+}
+
+
+extern fn on_touch_down(_: i32, ev: *const EmscriptenTouchEvent, ud: *mut u8) -> i32 {
+	let mut ctx: &mut MainContext = unsafe{ transmute(ud) };
+	let ev = unsafe { &*ev };
+
+	ctx.touch_enabled = true;
+
+	if ctx.touch_id.is_some() { return 0 }
+	if ev.num_touches < 1 { return 0 }
+
+	let touch = &ev.touches[0];
+
+	ctx.touch_id = Some(touch.id);
+	ctx.on_mouse_down(touch.x, touch.y, 0);
+
+	0
+}
+
+extern fn on_touch_up(_: i32, ev: *const EmscriptenTouchEvent, ud: *mut u8) -> i32 {
+	let mut ctx: &mut MainContext = unsafe{ transmute(ud) };
+	let ev = unsafe { &*ev };
+
+	if ctx.touch_id.is_none() { return 0 }
+	if ev.num_touches < 1 { return 0 }
+
+	let touch_id = ctx.touch_id.unwrap();
+
+	for t in &ev.touches[..ev.num_touches.min(32) as usize] {
+		if t.is_changed == 0 || t.id != touch_id { continue }
+
+		ctx.on_mouse_up(t.x, t.y, 0);
+		ctx.touch_id = None;
+		break
+	}
+
+	0
+}
+
+extern fn on_touch_move(_: i32, ev: *const EmscriptenTouchEvent, ud: *mut u8) -> i32 {
+	let mut ctx: &mut MainContext = unsafe{ transmute(ud) };
+	let ev = unsafe { &*ev };
+
+	if ctx.touch_id.is_none() { return 0 }
+	if ev.num_touches < 1 { return 0 }
+
+	let touch_id = ctx.touch_id.unwrap();
+
+	for t in &ev.touches[..ev.num_touches.min(32) as usize] {
+		if t.is_changed == 0 || t.id != touch_id { continue }
+
+		ctx.on_mouse_move(t.x, t.y);
+		break
+	}
+
+	0
 }

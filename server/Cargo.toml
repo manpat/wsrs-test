@@ -5,6 +5,7 @@ authors = ["manpat <pat@patsown.com>"]
 build = "../build.rs"
 
 [dependencies]
+rand = "*"
 sha1 = "0.2.0"
 base64 = "0.6.0"
 flate2 = "0.2"

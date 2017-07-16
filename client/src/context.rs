@@ -55,11 +55,12 @@ impl MainContext {
 	pub fn on_connect(&mut self) {
 		println!("Connected...");
 
-		// self.connection.send(&Packet::RequestNewSession);
+		self.auth_screen.on_connect();
 	}
 	
 	pub fn on_disconnect(&mut self) {
 		println!("Connection lost");
+		self.auth_screen.on_disconnect();
 	}
 	
 	pub fn on_update(&mut self) {

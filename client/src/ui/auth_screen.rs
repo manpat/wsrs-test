@@ -23,6 +23,8 @@ struct KeyRing {
 enum StatusAnimation {
 	Success,
 	Fail,
+	Connect,
+	Disconnect,
 }
 
 struct StatusRing {
@@ -121,6 +123,14 @@ impl AuthScreen {
 
 	pub fn on_auth_fail(&mut self) {
 		self.status_ring.start_animation(StatusAnimation::Fail);
+	}
+
+	pub fn on_connect(&mut self) {
+		self.status_ring.start_animation(StatusAnimation::Connect);
+	}
+
+	pub fn on_disconnect(&mut self) {
+		self.status_ring.start_animation(StatusAnimation::Disconnect);
 	}
 
 	pub fn poll_actions(&mut self) -> Option<AuthScreenAction> {
@@ -305,6 +315,17 @@ impl StatusRing {
 			Some(StatusAnimation::Success) => {
 				let r = self.anim_phase.ease_exp_in(0.12, 0.2, 0.7);
 				state.build_poly(self.position, Color::rgb(0.4, 1.0, 0.4), main_shape_segs, r);
+			},
+
+			Some(StatusAnimation::Connect) => {
+				let a = self.anim_phase.ease_quad_in(1.0, 0.0, 1.0);
+				state.build_poly(self.position, Color::grey_a(0.9, a), main_shape_segs, 0.2);
+			},
+
+			Some(StatusAnimation::Disconnect) => {
+				let r = self.anim_phase.ease_exp_in(0.12, 0.2, 0.7);
+				let a = self.anim_phase.ease_quad_in(0.3, 1.0, 1.0);
+				state.build_poly(self.position, Color::grey_a(0.4, a), main_shape_segs, r);
 			},
 
 			_ => {},

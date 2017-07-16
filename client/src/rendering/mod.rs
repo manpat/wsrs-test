@@ -109,6 +109,10 @@ impl RenderingContext {
 			gl::UseProgram(program);
 			ctx.program = program;
 			ctx.view_loc = gl::GetUniformLocation(program, CString::new("view").unwrap().as_ptr());
+
+			gl::Enable(gl::BLEND);
+			gl::BlendEquationSeparate(gl::FUNC_ADD, gl::FUNC_ADD);
+			gl::BlendFuncSeparate(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA, gl::ONE, gl::ZERO);
 		}
 
 		ctx

@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["manpat <pat@patsown.com>"]
 build = "../build.rs"
 
+[features]
+default = ["client"]
+client = []
+
 [build-dependencies]
 gl_generator = "0.5.0"
 

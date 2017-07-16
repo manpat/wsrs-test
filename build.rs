@@ -1,7 +1,7 @@
-#[cfg(CARGO_PKG_NAME="wsclient")]
+#[cfg(feature="client")]
 extern crate gl_generator;
 
-#[cfg(CARGO_PKG_NAME="wsclient")]
+#[cfg(feature="client")]
 use gl_generator::{Registry, Api, Profile, Fallbacks, StaticGenerator};
 
 use std::env;
@@ -59,7 +59,7 @@ fn main() {
 }
 
 fn generate_gl_bindings() {
-	#[cfg(CARGO_PKG_NAME="wsclient")]
+	#[cfg(feature="client")]
 	{
 		let dest = env::var("OUT_DIR").unwrap();
 		let mut file = File::create(&Path::new(&dest).join("gl_bindings.rs")).unwrap();

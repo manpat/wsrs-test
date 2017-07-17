@@ -152,8 +152,6 @@ impl RenderingContext {
 	}
 
 	pub fn render(&mut self, state: &RenderState) {
-		use std::ffi::CString;
-
 		if !self.is_current() {
 			assert!(self.make_current());
 		}

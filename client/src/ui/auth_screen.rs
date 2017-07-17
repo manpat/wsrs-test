@@ -36,6 +36,7 @@ struct StatusRing {
 	is_dragging: bool,
 
 	plus_offset: f32,
+	aperture_phase: f32,
 
 	animation: Option<StatusAnimation>,
 	anim_phase: f32,
@@ -86,8 +87,6 @@ impl AuthScreen {
 
 	pub fn on_click(&mut self, click_pos: Vec2) {
 		let mut key_changed = false;
-
-		let dist_to_center = click_pos.length();
 
 		if self.key_ring.on_click(click_pos) {
 			key_changed = true;
@@ -162,7 +161,7 @@ impl AuthScreen {
 		tmpstate.set_viewport(&tmp.get_viewport());
 
 		self.key_ring.render(&mut tmpstate);
-		tmpstate.build_ring(Vec2::new(0.0, 0.0), Color::grey(0.25), 18, 0.08, 0.12);
+		tmpstate.build_ring(Vec2::new(0.0, 0.0), Color::grey(0.25), 18, 0.12, 0.08);
 
 		tmpstate.flush_geom();
 		tmp.render(&tmpstate);
@@ -190,6 +189,7 @@ impl StatusRing {
 			is_dragging: false,
 
 			plus_offset: 1.0,
+			aperture_phase: 1.0,
 
 			animation: None,
 			anim_phase: 0.0,
@@ -224,7 +224,7 @@ impl StatusRing {
 		}
 	}
 
-	fn on_drag_end(&mut self, pos: Vec2) -> bool {
+	fn on_drag_end(&mut self, _pos: Vec2) -> bool {
 		if self.is_dragging {
 			self.is_dragging = false;
 
@@ -244,8 +244,10 @@ impl StatusRing {
 
 		if self.is_dragging {
 			self.position = self.position + (self.drag_target - self.drag_offset - self.position) * (dt * 30.0).min(1.0);
+			self.aperture_phase = (self.aperture_phase - dt * 6.0).max(0.0);
 		} else {
 			self.position = self.position * (1.0 - dt * 6.0).max(0.0);
+			self.aperture_phase = (self.aperture_phase + dt * 6.0).min(1.0);
 		}
 
 		if self.is_dragging && self.position.length() > 0.5 + 0.12 {
@@ -258,23 +260,20 @@ impl StatusRing {
 	fn render(&self, state: &mut RenderState) {
 		let main_shape_segs = 18;
 
-		let rip_dist = self.position.length();
-		let hole_mod = (rip_dist*3.0).powf(2.0).min(0.12);
-
 		state.start_stencil_erase();
-		state.draw_fullscreen_quad(Color::white());
+		state.draw_fullscreen_quad(Color::black());
 
 		// Main circle -> stencil
 		state.start_stencil_replace(2);
-		state.build_poly(Vec2::new(0.0, 0.0), Color::white(), main_shape_segs, 0.5);
+		state.build_poly(Vec2::new(0.0, 0.0), Color::black(), main_shape_segs, 0.5);
 
 		// Status circle outside main -> stencil
 		state.start_stencil_replace_if(StencilFunc::Greater, 1);
-		state.build_poly(self.position, Color::white(), main_shape_segs, 0.12);
+		state.build_poly(self.position, Color::black(), main_shape_segs, 0.12);
 		
 		// Mask main ring
 		state.start_stencil_erase();
-		state.build_ring(Vec2::new(0.0, 0.0), Color::grey(0.25), main_shape_segs, 0.05, 0.45);
+		state.build_ring(Vec2::new(0.0, 0.0), Color::black(), main_shape_segs, 0.45, 0.05);
 		
 		let plus_pos = self.position + self.plus_offset.ease_exp_in(Vec2::zero(), Vec2::new(0.0, -0.3), 1.0);
 		state.start_stencilled_draw(StencilFunc::Equal, 1);
@@ -287,11 +286,13 @@ impl StatusRing {
 
 		// Main circle -> stencil
 		state.start_stencil_replace(2);
-		state.build_poly(Vec2::new(0.0, 0.0), Color::white(), main_shape_segs, 0.45);
+		state.build_poly(Vec2::new(0.0, 0.0), Color::black(), main_shape_segs, 0.45);
+
+		let hole_mod = self.aperture_phase.ease_quad_inout(0.12, 0.0, 1.0);
 
 		// Status ring inside main -> stencil
 		state.start_stencil_replace_if(StencilFunc::Less, 1);
-		state.build_ring(self.position, Color::white(), main_shape_segs, 0.08 + hole_mod, 0.12 - hole_mod);
+		state.build_ring(self.position, Color::black(), main_shape_segs, 0.12 - hole_mod, 0.08 + hole_mod);
 
 		// Status ring fill
 		state.start_stencilled_draw(StencilFunc::Equal, 1);
@@ -307,9 +308,9 @@ impl StatusRing {
 
 		match self.animation {
 			Some(StatusAnimation::Fail) => {
-				let r = (self.anim_phase-0.75).ease_exp_in(0.11, 0.2, 0.75);
-				let w = self.anim_phase.ease_exp_out(0.01, 0.1, 0.75);
-				state.build_ring(self.position, Color::rgb(1.0, 0.4, 0.4), main_shape_segs, w, r);
+				let r = self.anim_phase.ease_exp_out(0.12, 0.2, 0.75);
+				let a = (self.anim_phase-0.5).ease_linear(1.0, 0.0, 1.0);
+				state.build_poly(self.position, Color::rgba(1.0, 0.4, 0.4, a), main_shape_segs, r);
 			},
 
 			Some(StatusAnimation::Success) => {
@@ -399,7 +400,7 @@ impl KeyRing {
 		let main_shape_segs = 18;
 		
 		// Main ring
-		state.build_ring(Vec2::new(0.0, 0.0), Color::grey(0.25), main_shape_segs, 0.05, 0.45);
+		state.build_ring(Vec2::new(0.0, 0.0), Color::grey(0.25), main_shape_segs, 0.45, 0.05);
 
 		// Main circle -> stencil
 		state.start_stencil_replace(1);
@@ -422,12 +423,13 @@ impl KeyRing {
 		// Tumblers outside the main circle
 		state.start_stencilled_draw(StencilFunc::NotEqual, 1);
 		for (i, thing) in self.tumblers.iter().enumerate() {
-			let th = i as f32 * increment + th_start;
-			let r = 0.5 + (thing.pos - 2.3) * 0.1;
+			let th = i as f32 * increment;
 
-			let offset = Vec2::from_angle(th) * r;
+			let prog = (thing.pos - 1.0).max(0.0);
+			let r = 0.4 + prog * 0.2;
+			let offset = Vec2::from_angle(th + th_start) * r;
 
-			state.build_poly(offset, Color::grey(0.35), 19, 0.13);
+			state.build_ring(offset, Color::grey(0.35), 18, 0.04, 0.03);
 		}
 
 		state.stop_stencil_draw();

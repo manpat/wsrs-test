@@ -320,7 +320,7 @@ impl RenderState {
 		}
 	}
 
-	pub fn build_ring_rot(&mut self, pos: Vec2, col: Color, points: u32, thickness: f32, s: f32, r: f32) {
+	pub fn build_ring_rot(&mut self, pos: Vec2, col: Color, points: u32, s: f32, thickness: f32, r: f32) {
 		if points <= 2 { return }
 
 		let start_idx = self.verts.len() as u16;
@@ -349,8 +349,8 @@ impl RenderState {
 		self.build_poly_rot(pos, col, points, s, 0.0);
 	}
 
-	pub fn build_ring(&mut self, pos: Vec2, col: Color, points: u32, thickness: f32, s: f32) {
-		self.build_ring_rot(pos, col, points, thickness, s, 0.0);
+	pub fn build_ring(&mut self, pos: Vec2, col: Color, points: u32, s: f32, thickness: f32) {
+		self.build_ring_rot(pos, col, points, s, thickness, 0.0);
 	}
 
 	pub fn build_from_convex(&mut self, vs: &[Vec2], col: Color) {

@@ -1,6 +1,7 @@
 #![feature(link_args)]
 #![feature(ord_max_min)]
 
+#[macro_use]
 extern crate common;
 extern crate rand;
 extern crate libc;
@@ -13,6 +14,8 @@ mod rendering;
 mod connection;
 
 mod ui;
+
+mod worldstate;
 
 use context::*;
 

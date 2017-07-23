@@ -17,13 +17,15 @@ pub use self::types::*;
 pub mod renderstate;
 pub use self::renderstate::*;
 
+pub mod shader;
+pub mod worldview;
+
+pub use self::shader::*;
+
 pub struct RenderingContext {
 	ems_context_handle: ems::EmWebGLContext,
 	canvas_id: String,
-
 	viewport: Viewport,
-	program: u32,
-	view_loc: i32,
 }
 
 impl RenderingContext {
@@ -45,71 +47,11 @@ impl RenderingContext {
 			ems_context_handle,
 			canvas_id: canvas_id.to_string(),
 			viewport: Viewport::new(),
-			program: 0,
-			view_loc: 0,
 		};
 
 		assert!(ctx.make_current(), "Failed to make WebGL context current");
 
-		let vertex_shader_src = r#"
-			attribute vec3 position;
-			attribute vec4 color;
-
-			uniform mat4 view;
-
-			varying vec4 vcolor;
-
-			void main() {
-				vec4 pos = view * vec4(position, 1.0);
-				gl_Position = vec4(pos.xyz, 1.0);
-				vcolor = color;
-			}
-		"#;
-
-		let fragment_shader_src = r#"
-			precision mediump float;
-
-			varying vec4 vcolor;
-			void main() {
-				gl_FragColor = vcolor;
-			}
-		"#;
-
 		unsafe {
-			use std::ffi::{CStr, CString};
-			use std;
-
-			let (vs,fs) = (gl::CreateShader(gl::VERTEX_SHADER), gl::CreateShader(gl::FRAGMENT_SHADER));
-			let program = gl::CreateProgram();
-
-			for &(sh, src) in [(vs, vertex_shader_src), (fs, fragment_shader_src)].iter() {
-				let src = CString::new(src).unwrap();
-				gl::ShaderSource(sh, 1, &src.as_ptr(), std::ptr::null());
-				gl::CompileShader(sh);
-
-				let mut status = 0i32;
-				gl::GetShaderiv(sh, gl::COMPILE_STATUS, &mut status);
-				if status == 0 {
-					let mut buf = [0u8; 1024];
-					let mut len = 0i32;
-					gl::GetShaderInfoLog(sh, buf.len() as i32, &mut len, buf.as_mut_ptr());
-
-					println!("{}", CStr::from_bytes_with_nul_unchecked(&buf[..len as usize]).to_str().unwrap());
-				}
-				
-				gl::AttachShader(program, sh);
-			}
-
-			gl::LinkProgram(program);
-			gl::UseProgram(program);
-
-			gl::DeleteShader(vs);
-			gl::DeleteShader(fs);
-
-			gl::UseProgram(program);
-			ctx.program = program;
-			ctx.view_loc = gl::GetUniformLocation(program, CString::new("view").unwrap().as_ptr());
-
 			gl::Enable(gl::BLEND);
 			gl::BlendEquationSeparate(gl::FUNC_ADD, gl::FUNC_ADD);
 			gl::BlendFuncSeparate(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA, gl::ONE, gl::ZERO);
@@ -156,21 +98,10 @@ impl RenderingContext {
 			assert!(self.make_current());
 		}
 
-		let aspect = self.viewport.get_aspect();
-
-		let matrix = [
-			1.0/aspect,		0.0,	0.0, 0.0,
-			0.0,			1.0,	0.0, 0.0,
-			0.0,			0.0,	1.0, 0.0,
-			0.0,			0.0,	0.0, 1.0f32,
-		];
-
 		unsafe {
 			gl::ClearColor(0.1, 0.1, 0.1, 1.0);
 			gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT);
 			gl::Viewport(0, 0, self.viewport.size.x, self.viewport.size.y);
-
-			gl::UniformMatrix4fv(self.view_loc, 1, 0, matrix.as_ptr());
 		}
 
 		state.render();

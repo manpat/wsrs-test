@@ -5,62 +5,38 @@ use ws;
 
 pub type ConnectionID = u32;
 
+pub const MAX_FAILED_AUTH_ATTEMPTS: i32 = 100;
+
 #[derive(Debug)]
 pub enum ConnectionState {
-	NoAuth{attempts: i32},
-	AttemptingAuth{attempts: i32, token: u32, waiting: bool},
+	NoAuth,
+	AttemptingAuth{token: u32, waiting: bool},
 	AwaitingNewSession,
 	NewSessionRequested,
 	Ready,
 	AwaitingDeletion,
 }
 
-macro_rules! matches_enum {
-    ($v:expr, $p:pat) => {
-    	match $v {
-    		$p => true,
-    		_ => false,
-    	}
-    }
-}
-
 pub struct Connection {
 	pub stream: TcpStream,
 	pub state: ConnectionState,
+	pub failed_auth_attempts: i32,
 
 	pub session_id: Option<u32>,
 	pub id: ConnectionID,
 }
 
 impl Connection {
-	pub fn get_auth_attempts(&self) -> Option<i32> {
-		match self.state {
-			ConnectionState::NoAuth{attempts} => Some(attempts),
-			ConnectionState::AttemptingAuth{attempts, ..} => Some(attempts),
-			 _ => None
-		}
-	}
-
-	pub fn is_awaiting_auth(&self) -> bool {
-		self.get_auth_attempts().is_some()
-	}
-
 	pub fn is_awaiting_new_session(&self) -> bool {
-		match self.state {
-			ConnectionState::AwaitingNewSession => true, _ => false
-		}
+		match_enum!(self.state, ConnectionState::AwaitingNewSession)
 	}
 
 	pub fn is_awaiting_deletion(&self) -> bool {
-		match self.state {
-			ConnectionState::AwaitingDeletion => true, _ => false
-		}
+		match_enum!(self.state, ConnectionState::AwaitingDeletion)
 	}
 
 	pub fn is_ready(&self) -> bool {
-		match self.state {
-			ConnectionState::Ready => true, _ => false
-		}
+		match_enum!(self.state, ConnectionState::Ready)
 	}
 
 	pub fn send_payload(&mut self, mut packet_buffer: &mut [u8], payload: &[u8]) {
@@ -91,7 +67,8 @@ impl ConnectionManager {
 
 		self.connections.push(Connection {
 			stream,
-			state: ConnectionState::NoAuth{attempts: 0},
+			state: ConnectionState::NoAuth,
+			failed_auth_attempts: 0,
 
 			session_id: None,
 			id: self.next_id,
@@ -106,6 +83,7 @@ impl ConnectionManager {
 
 			con.session_id = Some(token);
 			con.state = ConnectionState::Ready;
+			con.failed_auth_attempts = 0;
 			true
 		} else {
 			false
@@ -118,9 +96,8 @@ impl ConnectionManager {
 		let mut con = self.connections.iter_mut().find(|c| c.id == id);
 
 		if let Some(ref mut con) = con {
-			if matches_enum!(con.state, NewSessionRequested) {
-				// TODO: preserve attempts
-				con.state = NoAuth{attempts: 0};
+			if match_enum!(con.state, NewSessionRequested) {
+				con.state = NoAuth;
 				con.session_id = None;
 
 				return true;
@@ -134,9 +111,13 @@ impl ConnectionManager {
 		use self::ConnectionState::*;
 
 		if let Some(ref mut con) = self.connections.iter_mut().find(|c| c.id == id) {
+			con.failed_auth_attempts += 1;
+
 			con.state = match con.state {
-				AttemptingAuth{attempts, waiting: true, ..} => 
-					NoAuth{attempts: attempts+1},
+				// TODO: Temp ban??
+				AttemptingAuth{waiting: true, ..} =>
+					if con.failed_auth_attempts > MAX_FAILED_AUTH_ATTEMPTS { AwaitingDeletion }
+					else { NoAuth },
 
 				_ => {
 					println!("notify_auth_fail called on connection not waiting for auth - closing...");
@@ -162,11 +143,11 @@ impl ConnectionManager {
 
 	pub fn poll_auth_attempts(&mut self) -> Option<(ConnectionID, u32)> {
 		self.connections.iter_mut()
-			.filter(|c| matches_enum!(c.state, ConnectionState::AttemptingAuth{waiting: false, ..}))
+			.filter(|c| match_enum!(c.state, ConnectionState::AttemptingAuth{waiting: false, ..}))
 			.next().as_mut()
 			.and_then(|con| {
-				if let ConnectionState::AttemptingAuth{token, attempts, ..} = con.state {
-					con.state = ConnectionState::AttemptingAuth{waiting: true, 	token, attempts};
+				if let ConnectionState::AttemptingAuth{token, ..} = con.state {
+					con.state = ConnectionState::AttemptingAuth{waiting: true, 	token};
 					Some((con.id, token))
 				} else {
 					None
@@ -240,7 +221,7 @@ impl ConnectionManager {
 	}
 
 	fn process_unauthed_packet(con: &mut Connection, p: &Packet) {
-		if let ConnectionState::NoAuth{attempts} = con.state {
+		if let ConnectionState::NoAuth = con.state {
 			match *p {
 				Packet::RequestNewSession => {
 					con.state = ConnectionState::AwaitingNewSession
@@ -248,10 +229,10 @@ impl ConnectionManager {
 
 				Packet::AttemptAuthSession(token) => {
 					println!("Client {} tried to auth with key '{}'", con.id, token);
-					// TODO: if token doesn't exist, bump attempt count and potentially terminate connection
+					// TODO: if token doesn't exist potentially terminate connection
 					// con.session_id = Some(token);
 					// con.state = ConnectionState::Ready;
-					con.state = ConnectionState::AttemptingAuth{attempts: attempts+1, token, waiting: false};
+					con.state = ConnectionState::AttemptingAuth{token, waiting: false};
 				},
 
 				_ => {},

@@ -1,5 +1,7 @@
-use rendering::{RenderingContext, RenderState, StencilFunc};
+use rendering::{RenderingContext, RenderState, StencilFunc, ShapeBuilder};
 use rendering::types::*;
+
+use ui::InputTarget;
 
 use std::f32::consts::PI;
 
@@ -46,6 +48,7 @@ struct StatusRing {
 pub enum AuthScreenAction {
 	RequestNewSession,
 	TryAuth(u32),
+	EnterGame,
 }
 
 pub struct AuthScreen {
@@ -56,6 +59,8 @@ pub struct AuthScreen {
 	download_button_pos: Vec2,
 
 	action: Option<AuthScreenAction>,
+
+	hide_anim_phase: Option<f32>,
 }
 
 impl AuthScreen {
@@ -68,56 +73,14 @@ impl AuthScreen {
 			download_button_pos: Vec2::zero(),
 
 			action: None,
-		}
-	}
 
-	pub fn on_drag_start(&mut self, pos: Vec2) {
-		if self.status_ring.try_start_drag(pos) { return }
-	}
-
-	pub fn on_drag_end(&mut self, pos: Vec2) {
-		if self.status_ring.on_drag_end(pos) {
-			self.action = Some(AuthScreenAction::RequestNewSession);
-		}
-	}
-
-	pub fn on_drag(&mut self, pos: Vec2) {
-		self.status_ring.on_drag(pos);;
-	}
-
-	pub fn on_click(&mut self, click_pos: Vec2) {
-		let mut key_changed = false;
-
-		if self.key_ring.on_click(click_pos) {
-			key_changed = true;
-
-		} else if self.status_ring.on_click(click_pos) {
-			let key = self.calculate_key();
-			println!("Requesting auth {}", key);
-			self.action = Some(AuthScreenAction::TryAuth(key));
-		}
-
-		if (self.download_button_pos - click_pos).length() < 0.1 {
-			self.download_key();
-		}
-
-		if (self.viewport.get_top_left() - click_pos).length() < 0.1 {
-			use rand;
-
-			let max_key = KEY_BASE.pow(KEY_LENGTH);
-			let random_key = rand::random::<u32>() % max_key;
-
-			self.set_key(random_key);
-			key_changed = true;
-		}
-
-		if key_changed {
-			println!("New key: {}", self.calculate_key());
+			hide_anim_phase: None,
 		}
 	}
 
 	pub fn on_auth_success(&mut self) {
-		self.status_ring.start_animation(StatusAnimation::Success);		
+		self.status_ring.start_animation(StatusAnimation::Success);
+		self.hide_anim_phase = Some(-0.5);
 	}
 
 	pub fn on_auth_fail(&mut self) {
@@ -143,9 +106,22 @@ impl AuthScreen {
 		self.status_ring.update(dt);
 
 		self.download_button_pos = self.viewport.get_bottom_left() + Vec2::new(0.14, 0.14);
+
+		self.hide_anim_phase = match self.hide_anim_phase {
+			Some(phase) if phase < 1.0 => Some(phase + dt),
+
+			Some(_) => {
+				self.action = Some(AuthScreenAction::EnterGame);
+				None
+			}
+
+			None => None,
+		}
 	}
 
 	pub fn render(&self, mut state: &mut RenderState) {
+		// TODO: some animation w/ self.hide_anim_phase
+
 		self.key_ring.render(&mut state);
 		self.status_ring.render(&mut state);
 
@@ -175,6 +151,53 @@ impl AuthScreen {
 
 	pub fn set_key(&mut self, key: u32) {
 		self.key_ring.set_key(key);
+	}
+}
+
+impl InputTarget for AuthScreen {
+	fn on_drag_start(&mut self, pos: Vec2) {
+		if self.status_ring.try_start_drag(pos) { return }
+	}
+
+	fn on_drag_end(&mut self, pos: Vec2) {
+		if self.status_ring.on_drag_end(pos) {
+			self.action = Some(AuthScreenAction::RequestNewSession);
+		}
+	}
+
+	fn on_drag(&mut self, pos: Vec2) {
+		self.status_ring.on_drag(pos);
+	}
+
+	fn on_click(&mut self, click_pos: Vec2) {
+		let mut key_changed = false;
+
+		if self.key_ring.on_click(click_pos) {
+			key_changed = true;
+
+		} else if self.status_ring.on_click(click_pos) {
+			let key = self.calculate_key();
+			println!("Requesting auth {}", key);
+			self.action = Some(AuthScreenAction::TryAuth(key));
+		}
+
+		if (self.download_button_pos - click_pos).length() < 0.1 {
+			self.download_key();
+		}
+
+		// if (self.viewport.get_top_left() - click_pos).length() < 0.1 {
+		// 	use rand;
+
+		// 	let max_key = KEY_BASE.pow(KEY_LENGTH);
+		// 	let random_key = rand::random::<u32>() % max_key;
+
+		// 	self.set_key(random_key);
+		// 	key_changed = true;
+		// }
+
+		if key_changed {
+			println!("New key: {}", self.calculate_key());
+		}
 	}
 }
 
@@ -375,7 +398,7 @@ impl KeyRing {
 		let dist_to_center = click_pos.length();
 		let angle = click_pos.y.atan2(click_pos.x);
 
-		if dist_to_center > 0.2 && dist_to_center < 0.6 {
+		if dist_to_center > 0.2 && dist_to_center < 0.7 {
 			let segment = (angle - th_start) / increment + 0.5 + KEY_LENGTH as f32;
 			let segment = segment as u32 % KEY_LENGTH;
 

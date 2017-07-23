@@ -20,7 +20,7 @@ struct EmscriptenTouchPoint {
 	x: i32, y: i32,
 	_page: [i32; 2],
 	is_changed: i32,
-
+	// ... I don't care about the rest of these fields
 }
 
 #[repr(C)]
@@ -32,7 +32,7 @@ struct EmscriptenTouchEvent {
 
 #[repr(C)]
 pub struct EmscriptenWebGLContextAttributes {
-	pub alpha: i32,
+	pub alpha: i32, // NOTE: this enables alpha blending of the *canvas itself*
 	pub depth: i32,
 	pub stencil: i32,
 	pub antialias: i32,

@@ -5,11 +5,13 @@ mod ws;
 
 mod world;
 
+#[macro_use]
+extern crate common;
+
 extern crate rand;
 extern crate sha1;
 extern crate base64;
 extern crate flate2;
-extern crate common;
 
 use std::net::{TcpStream, TcpListener};
 use std::io::Read;

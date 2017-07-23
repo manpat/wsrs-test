@@ -13,6 +13,11 @@ pub enum Species {
 	A, B, C
 }
 
+pub const ALL_SPECIES: [Species; 3] = {
+	use self::Species::*; 
+	[A, B, C]
+};
+
 #[derive(Copy, Clone, Debug)]
 pub enum Maturity {
 	// [0, 1000) - affected by tick rate

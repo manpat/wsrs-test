@@ -146,9 +146,6 @@ impl World {
 	}
 
 	pub fn get_diversity_at(&self, p: Pos, r: f32) -> f32 {
-		use self::Species::*;
-
-		let species = [A, B, C];
 		let q = 2.0;
 
 		let trees_in_range = self.trees.iter()
@@ -159,7 +156,7 @@ impl World {
 		let total_potential_diversity = trees_in_range.iter()
 			.fold(0.0, |a, &(t, d)| a + t.get_diversity_contribution() * 4.0 / d);
 
-		let abundances: Vec<_> = species.iter()
+		let abundances: Vec<_> = ALL_SPECIES.iter()
 			.map(|x| trees_in_range.iter().filter(|&tp| tp.0.species == *x)
 				.fold(0.0, |a, &(t, d)| a + t.get_diversity_contribution() * 4.0 / d))
 			.filter(|&x| x > 0.0)
@@ -172,7 +169,7 @@ impl World {
 
 		if diversity > 0.0 {
 			let diversity = diversity.powf(-1.0 / (q - 1.0));
-			(diversity - 1.0) / (species.len() - 1) as f32
+			(diversity - 1.0) / (ALL_SPECIES.len() - 1) as f32
 		} else {
 			0.0
 		}

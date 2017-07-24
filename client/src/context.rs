@@ -1,5 +1,7 @@
 use std::time;
-use rendering::{RenderingContext, RenderState, Shader};
+use rendering::{RenderingContext, Shader};
+use rendering::uibuilder::UIBuilder;
+use rendering::worldview::WorldView;
 use connection::Connection;
 
 use common::*;
@@ -14,22 +16,21 @@ enum ScreenState {
 }
 
 pub struct MainContext {
-	pub connection: Box<Connection>,
+	connection: Box<Connection>,
 
-	pub prev_frame: time::Instant,
+	prev_frame: time::Instant,
 
-	pub render_ctx: RenderingContext,
-	pub render_state: RenderState,
+	render_ctx: RenderingContext,
+	ui_builder: UIBuilder,
+	world_view: WorldView,
 
 	screen_state: ScreenState,
 	auth_screen: ui::AuthScreen,
 	main_screen: ui::MainScreen,
 
-	ui_shader: Shader,
-
-	pub click_start_pos: Vec2i,
-	pub is_dragging: bool,
-	pub is_mouse_down: bool,
+	click_start_pos: Vec2i,
+	is_dragging: bool,
+	is_mouse_down: bool,
 
 	// hack hack hack
 	pub touch_id: Option<i32>,
@@ -44,43 +45,17 @@ impl MainContext {
 		let mut connection = Connection::new();
 		connection.attempt_connect();
 
-		let vertex_shader_src = r#"
-			attribute vec3 position;
-			attribute vec4 color;
-
-			uniform mat4 proj;
-			uniform mat4 view;
-
-			varying vec4 vcolor;
-
-			void main() {
-				vec4 pos = proj * view * vec4(position, 1.0);
-				gl_Position = vec4(pos.xyz, 1.0);
-				vcolor = color;
-			}
-		"#;
-
-		let fragment_shader_src = r#"
-			precision mediump float;
-
-			varying vec4 vcolor;
-			void main() {
-				gl_FragColor = vcolor;
-			}
-		"#;
-
 		MainContext {
 			connection,
 			prev_frame: time::Instant::now(),
 
 			render_ctx,
-			render_state: RenderState::new(),
+			ui_builder: UIBuilder::new(),
+			world_view: WorldView::new(),
 
 			screen_state: ScreenState::AuthScreen,
 			auth_screen: ui::AuthScreen::new(),
 			main_screen: ui::MainScreen::new(),
-
-			ui_shader: Shader::new(&vertex_shader_src, &fragment_shader_src),
 
 			click_start_pos: Vec2i::zero(),
 			is_dragging: false,
@@ -145,43 +120,28 @@ impl MainContext {
 		self.render_ctx.fit_target_to_viewport();
 		let vp = self.render_ctx.get_viewport();
 
-		self.render_state.set_viewport(&vp);
-
-		let aspect = vp.get_aspect();
-
-		let projmat = [
-			1.0/aspect,		0.0,	0.0, 0.0,
-			0.0,			1.0,	0.0, 0.0,
-			0.0,			0.0,	1.0, 0.0,
-			0.0,			0.0,	0.0, 1.0f32,
-		];
-
-		let identmat: [f32; 16] = [
-			1.0, 0.0, 0.0, 0.0,
-			0.0, 1.0, 0.0, 0.0,
-			0.0, 0.0, 1.0, 0.0,
-			0.0, 0.0, 0.0, 1.0,
-		];
-
-		self.ui_shader.set_proj(&projmat);
-		self.ui_shader.set_view(&identmat);
-
-		self.render_state.clear();
-		self.render_state.use_shader(self.ui_shader);
+		self.ui_builder.set_viewport(&vp);
+		self.ui_builder.clear();
 
 		match self.screen_state {
 			ScreenState::AuthScreen => {
 				self.auth_screen.viewport = vp;
-				self.auth_screen.render(&mut self.render_state);
+				self.auth_screen.render(&mut self.ui_builder);
 			}
 
 			ScreenState::MainScreen => {
-				self.main_screen.render(&mut self.render_state);
+				self.main_screen.render(&mut self.ui_builder);
 			}
 		}
 
-		self.render_state.flush_geom();
-		self.render_ctx.render(&self.render_state);
+		self.ui_builder.flush_geom();
+
+		self.render_ctx.prepare_render();
+		self.ui_builder.render();
+
+		if match_enum!(self.screen_state, ScreenState::MainScreen) {
+			self.world_view.render(&vp);
+		}
 	}
 
 	fn get_input_target<'a>(&'a mut self) -> &'a mut InputTarget {

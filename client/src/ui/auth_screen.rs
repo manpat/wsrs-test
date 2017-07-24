@@ -1,4 +1,5 @@
-use rendering::{RenderingContext, RenderState, StencilFunc, ShapeBuilder};
+use rendering::RenderingContext;
+use rendering::uibuilder::*;
 use rendering::types::*;
 
 use ui::InputTarget;
@@ -119,20 +120,20 @@ impl AuthScreen {
 		}
 	}
 
-	pub fn render(&self, mut state: &mut RenderState) {
+	pub fn render(&self, mut builder: &mut UIBuilder) {
 		// TODO: some animation w/ self.hide_anim_phase
 
-		self.key_ring.render(&mut state);
-		self.status_ring.render(&mut state);
+		self.key_ring.render(&mut builder);
+		self.status_ring.render(&mut builder);
 
-		state.build_poly(self.download_button_pos, Color::grey(0.3), 15, 0.1);
+		builder.build_poly(self.download_button_pos, Color::grey(0.3), 15, 0.1);
 	}
 
 	pub fn download_key(&self) {
 		use util;
 
 		let mut tmp = RenderingContext::new("downloadcanvas");
-		let mut tmpstate = RenderState::new();
+		let mut tmpstate = UIBuilder::new();
 		tmp.set_target_size(400, 400);
 		tmpstate.set_viewport(&tmp.get_viewport());
 
@@ -140,7 +141,9 @@ impl AuthScreen {
 		tmpstate.build_ring(Vec2::new(0.0, 0.0), Color::grey(0.25), 18, 0.12, 0.08);
 
 		tmpstate.flush_geom();
-		tmp.render(&tmpstate);
+
+		tmp.prepare_render();
+		tmpstate.render();
 
 		util::save_canvas("downloadcanvas");
 	}
@@ -280,82 +283,82 @@ impl StatusRing {
 		}
 	}
 
-	fn render(&self, state: &mut RenderState) {
+	fn render(&self, builder: &mut UIBuilder) {
 		let main_shape_segs = 18;
 
-		state.start_stencil_erase();
-		state.draw_fullscreen_quad(Color::black());
+		builder.start_stencil_erase();
+		builder.draw_fullscreen_quad(Color::black());
 
 		// Main circle -> stencil
-		state.start_stencil_replace(2);
-		state.build_poly(Vec2::new(0.0, 0.0), Color::black(), main_shape_segs, 0.5);
+		builder.start_stencil_replace(2);
+		builder.build_poly(Vec2::new(0.0, 0.0), Color::black(), main_shape_segs, 0.5);
 
 		// Status circle outside main -> stencil
-		state.start_stencil_replace_if(StencilFunc::Greater, 1);
-		state.build_poly(self.position, Color::black(), main_shape_segs, 0.12);
+		builder.start_stencil_replace_if(StencilFunc::Greater, 1);
+		builder.build_poly(self.position, Color::black(), main_shape_segs, 0.12);
 		
 		// Mask main ring
-		state.start_stencil_erase();
-		state.build_ring(Vec2::new(0.0, 0.0), Color::black(), main_shape_segs, 0.45, 0.05);
+		builder.start_stencil_erase();
+		builder.build_ring(Vec2::new(0.0, 0.0), Color::black(), main_shape_segs, 0.45, 0.05);
 		
 		let plus_pos = self.position + self.plus_offset.ease_exp_in(Vec2::zero(), Vec2::new(0.0, -0.3), 1.0);
-		state.start_stencilled_draw(StencilFunc::Equal, 1);
-		state.build_poly(self.position, Color::white(), main_shape_segs, 0.12);
-		state.build_poly_rot(plus_pos, Color::rgb(0.3, 0.8, 0.6), 4, 0.08, PI/4.0);
+		builder.start_stencilled_draw(StencilFunc::Equal, 1);
+		builder.build_poly(self.position, Color::white(), main_shape_segs, 0.12);
+		builder.build_poly_rot(plus_pos, Color::rgb(0.3, 0.8, 0.6), 4, 0.08, PI/4.0);
 
 		// Clear
-		state.start_stencil_erase();
-		state.draw_fullscreen_quad(Color::white());
+		builder.start_stencil_erase();
+		builder.draw_fullscreen_quad(Color::white());
 
 		// Main circle -> stencil
-		state.start_stencil_replace(2);
-		state.build_poly(Vec2::new(0.0, 0.0), Color::black(), main_shape_segs, 0.45);
+		builder.start_stencil_replace(2);
+		builder.build_poly(Vec2::new(0.0, 0.0), Color::black(), main_shape_segs, 0.45);
 
 		let hole_mod = self.aperture_phase.ease_quad_inout(0.12, 0.0, 1.0);
 
 		// Status ring inside main -> stencil
-		state.start_stencil_replace_if(StencilFunc::Less, 1);
-		state.build_ring(self.position, Color::black(), main_shape_segs, 0.12 - hole_mod, 0.08 + hole_mod);
+		builder.start_stencil_replace_if(StencilFunc::Less, 1);
+		builder.build_ring(self.position, Color::black(), main_shape_segs, 0.12 - hole_mod, 0.08 + hole_mod);
 
 		// Status ring fill
-		state.start_stencilled_draw(StencilFunc::Equal, 1);
+		builder.start_stencilled_draw(StencilFunc::Equal, 1);
 		let ph = self.phase * PI * 2.0;
 		let o = (ph/5.0).sin();
 		let o2 = (ph/7.0).sin();
 		let o3 = (ph/11.0).cos();
-		state.build_poly(Vec2::zero(), Color::rgb(0.6, 0.4, 0.9), 4, 0.5 * 2.0f32.sqrt());
-		state.build_poly(Vec2::new(o3*0.05, o*0.02 - 0.2), Color::rgb(0.8, 0.7, 0.4), main_shape_segs, 0.3);
-		state.build_poly(Vec2::new(o2*0.03 - 0.2, 0.1 - o3*0.05), Color::rgb(0.4, 0.6, 0.9), main_shape_segs, 0.3);
-		state.build_poly(Vec2::new(0.2 + o3 *0.1, o2 * 0.01 + o3*0.05), Color::rgb(0.4, 0.9, 0.6), main_shape_segs, 0.3);
-		state.build_poly(Vec2::new(0.2 + o*0.03, 0.3), Color::rgb(0.9, 0.4, 0.6), main_shape_segs, 0.3);
+		builder.build_poly(Vec2::zero(), Color::rgb(0.6, 0.4, 0.9), 4, 0.5 * 2.0f32.sqrt());
+		builder.build_poly(Vec2::new(o3*0.05, o*0.02 - 0.2), Color::rgb(0.8, 0.7, 0.4), main_shape_segs, 0.3);
+		builder.build_poly(Vec2::new(o2*0.03 - 0.2, 0.1 - o3*0.05), Color::rgb(0.4, 0.6, 0.9), main_shape_segs, 0.3);
+		builder.build_poly(Vec2::new(0.2 + o3 *0.1, o2 * 0.01 + o3*0.05), Color::rgb(0.4, 0.9, 0.6), main_shape_segs, 0.3);
+		builder.build_poly(Vec2::new(0.2 + o*0.03, 0.3), Color::rgb(0.9, 0.4, 0.6), main_shape_segs, 0.3);
 
 		match self.animation {
 			Some(StatusAnimation::Fail) => {
 				let r = self.anim_phase.ease_exp_out(0.12, 0.2, 0.75);
 				let a = (self.anim_phase-0.5).ease_linear(1.0, 0.0, 1.0);
-				state.build_poly(self.position, Color::rgba(1.0, 0.4, 0.4, a), main_shape_segs, r);
+				builder.build_poly(self.position, Color::rgba(1.0, 0.4, 0.4, a), main_shape_segs, r);
 			},
 
 			Some(StatusAnimation::Success) => {
 				let r = self.anim_phase.ease_exp_in(0.12, 0.2, 0.7);
-				state.build_poly(self.position, Color::rgb(0.4, 1.0, 0.4), main_shape_segs, r);
+				builder.build_poly(self.position, Color::rgb(0.4, 1.0, 0.4), main_shape_segs, r);
 			},
 
 			Some(StatusAnimation::Connect) => {
 				let a = self.anim_phase.ease_quad_in(1.0, 0.0, 1.0);
-				state.build_poly(self.position, Color::grey_a(0.9, a), main_shape_segs, 0.2);
+				builder.build_poly(self.position, Color::grey_a(0.9, a), main_shape_segs, 0.2);
 			},
 
 			Some(StatusAnimation::Disconnect) => {
 				let r = self.anim_phase.ease_exp_in(0.12, 0.2, 0.7);
 				let a = self.anim_phase.ease_quad_in(0.3, 1.0, 1.0);
-				state.build_poly(self.position, Color::grey_a(0.4, a), main_shape_segs, r);
+				builder.build_poly(self.position, Color::grey_a(0.4, a), main_shape_segs, r);
 			},
 
 			_ => {},
 		}
 
-		state.stop_stencil_draw();
+		builder.stop_stencil_draw();
 	}
 }
 
@@ -419,32 +422,32 @@ impl KeyRing {
 		}
 	}
 
-	fn render(&self, state: &mut RenderState) {
+	fn render(&self, builder: &mut UIBuilder) {
 		let main_shape_segs = 18;
 		
 		// Main ring
-		state.build_ring(Vec2::new(0.0, 0.0), Color::grey(0.25), main_shape_segs, 0.45, 0.05);
+		builder.build_ring(Vec2::new(0.0, 0.0), Color::grey(0.25), main_shape_segs, 0.45, 0.05);
 
 		// Main circle -> stencil
-		state.start_stencil_replace(1);
-		state.build_poly(Vec2::new(0.0, 0.0), Color::white(), main_shape_segs, 0.5);
+		builder.start_stencil_replace(1);
+		builder.build_poly(Vec2::new(0.0, 0.0), Color::white(), main_shape_segs, 0.5);
 
 		let increment = PI * 2.0 / KEY_LENGTH as f32;
 		let th_start = increment/2.0 + PI / 2.0;
 
 		// Tumblers inside the main circle
-		state.start_stencilled_draw(StencilFunc::Equal, 1);
+		builder.start_stencilled_draw(StencilFunc::Equal, 1);
 		for (i, thing) in self.tumblers.iter().enumerate() {
 			let th = i as f32 * increment + th_start;
 			let r = 0.5 - (1.0 - thing.pos) * 0.15;
 
 			let offset = Vec2::from_angle(th) * r;
 
-			state.build_poly(offset, Color::grey(0.5), 17, 0.06);
+			builder.build_poly(offset, Color::grey(0.5), 17, 0.06);
 		}
 		
 		// Tumblers outside the main circle
-		state.start_stencilled_draw(StencilFunc::NotEqual, 1);
+		builder.start_stencilled_draw(StencilFunc::NotEqual, 1);
 		for (i, thing) in self.tumblers.iter().enumerate() {
 			let th = i as f32 * increment;
 
@@ -452,10 +455,10 @@ impl KeyRing {
 			let r = 0.4 + prog * 0.2;
 			let offset = Vec2::from_angle(th + th_start) * r;
 
-			state.build_ring(offset, Color::grey(0.35), 18, 0.04, 0.03);
+			builder.build_ring(offset, Color::grey(0.35), 18, 0.04, 0.03);
 		}
 
-		state.stop_stencil_draw();
+		builder.stop_stencil_draw();
 	}
 
 	fn calculate_key(&self) -> u32 {

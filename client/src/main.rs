@@ -1,3 +1,4 @@
+#![feature(const_fn)]
 #![feature(link_args)]
 #![feature(ord_max_min)]
 

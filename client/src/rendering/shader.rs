@@ -1,4 +1,5 @@
 use std;
+use common::math::*;
 use rendering::gl;
 
 #[derive(Copy, Clone)]
@@ -49,24 +50,32 @@ impl Shader {
 		}
 	}
 
+	pub const fn invalid() -> Shader {
+		Shader {
+			gl_handle: 0,
+			proj_loc: 0,
+			view_loc: 0,
+		}
+	}
+
 	pub fn use_program(&self) {
 		unsafe {
 			gl::UseProgram(self.gl_handle);
 		}
 	}
 
-	pub fn set_uniform_mat(&self, uniform: i32, mat: &[f32; 16]) {
+	pub fn set_uniform_mat(&self, uniform: i32, mat: &Mat4) {
 		unsafe {
 			// TODO: Make sure we're bound
-			gl::UniformMatrix4fv(uniform, 1, 0, mat.as_ptr());
+			gl::UniformMatrix4fv(uniform, 1, 0, mat.transpose().rows.as_ptr() as *const f32);
 		}
 	}
 
-	pub fn set_proj(&self, mat: &[f32; 16]) {
+	pub fn set_proj(&self, mat: &Mat4) {
 		self.set_uniform_mat(self.proj_loc, &mat);
 	}
 
-	pub fn set_view(&self, mat: &[f32; 16]) {
+	pub fn set_view(&self, mat: &Mat4) {
 		self.set_uniform_mat(self.view_loc, &mat);
 	}
 }

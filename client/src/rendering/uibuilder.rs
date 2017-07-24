@@ -5,21 +5,29 @@ use rendering::shader::Shader;
 use std::ops::Drop;
 use std::f32::consts::PI;
 
+use std::sync::{Once, ONCE_INIT};
+
+static SHADER_INIT: Once = ONCE_INIT;
+static mut UI_SHADER: Shader = Shader::invalid();
+
+static VERT_SRC: &'static str = include_str!("../../assets/ui.vert");
+static FRAG_SRC: &'static str = include_str!("../../assets/ui.frag");
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct Vertex {
-	pos: (f32, f32, f32),
+	pos: Vec3,
 	color: Color,
 }
 
 impl Vertex {
 	fn new_2d(p: Vec2, color: Color) -> Vertex {
-		let pos = (p.x, p.y, 0.0);
+		let pos = Vec3::new(p.x, p.y, 0.0);
 		Vertex {pos, color}
 	}
 
-	fn new(p: Vec3, color: Color) -> Vertex {
-		Vertex {pos: p.to_tuple(), color}
+	fn new(pos: Vec3, color: Color) -> Vertex {
+		Vertex {pos, color}
 	}
 }
 
@@ -89,20 +97,15 @@ enum Command {
 		pass: StencilOp,
 	},
 
-	UseShader(Shader),
-	SetView{index: usize},
-
 	StencilTest(bool),
 	ColorWrite(bool),
 	DepthWrite(bool),
 }
 
-pub struct RenderState {
+pub struct UIBuilder {
 	pub viewport: Viewport,
 
 	commands: Vec<Command>,
-
-	view_matrices: Vec<[f32; 16]>,
 
 	verts: Vec<Vertex>,
 	indices: Vec<u16>,
@@ -114,17 +117,21 @@ pub struct RenderState {
 }
 
 #[allow(dead_code)]
-impl RenderState {
+impl UIBuilder {
 	pub fn new() -> Self {
 		let mut vbos = [0u32; 3];
 		unsafe { gl::GenBuffers(3, vbos.as_mut_ptr()); }
 
-		RenderState {
+		unsafe {
+			SHADER_INIT.call_once(|| {
+				UI_SHADER = Shader::new(&VERT_SRC, &FRAG_SRC);
+			});
+		}
+
+		UIBuilder {
 			viewport: Viewport::new(),
 
 			commands: Vec::new(),
-
-			view_matrices: Vec::new(),
 
 			verts: Vec::new(),
 			indices: Vec::new(),
@@ -141,34 +148,19 @@ impl RenderState {
 		self.viewport = *vp;
 	}
 
-	pub fn clear(&mut self) {
-		self.commands.clear();
-		self.verts.clear();
-		self.indices.clear();
-		self.view_matrices.clear();
-		self.render_start_idx = 0;
-	}
-
-	pub fn flush_geom(&mut self) {
-		let num_indices = self.indices.len() as u32;
-
-		if num_indices - self.render_start_idx > 0 {
-			self.commands.push(Command::Geom{
-				start: self.render_start_idx,
-				count: num_indices - self.render_start_idx,
-			});
-
-			self.render_start_idx = num_indices;
-		}
-	}
-
 	pub fn render(&self) {
 		if self.verts.len() < 3 { return }
 		if self.indices.len() < 3 { return }
 		// TODO: assert that our buffers were generated in the current webgl context
-
+		
 		unsafe {
 			use std::mem::{transmute, size_of, size_of_val};
+
+			UI_SHADER.use_program();
+
+			let aspect = self.viewport.get_aspect();
+
+			UI_SHADER.set_view(&Mat4::scale(Vec3::new(1.0/aspect, 1.0, 1.0)));
 
 			let vert_size = size_of::<Vertex>();
 			let short_size = size_of::<u16>();
@@ -186,25 +178,10 @@ impl RenderState {
 			gl::VertexAttribPointer(1, 4, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(12));
 
 			let mut fs_quad_bound = false;
-			let mut current_shader = None;
 
 			for c in &self.commands {
 				match *c {
-					Command::UseShader(shader) => {
-						shader.use_program();
-						current_shader = Some(shader);
-					},
-
-					Command::SetView{index} => {
-						assert!(current_shader.is_some(), "Must bind a shader before setting view matrix");
-
-						current_shader.unwrap()
-							.set_view(&self.view_matrices[index]);
-					},
-
 					Command::Geom{start, count} => {
-						assert!(current_shader.is_some(), "Must bind a shader before drawing geometry");
-
 						if fs_quad_bound {
 							fs_quad_bound = false;
 							gl::BindBuffer(gl::ARRAY_BUFFER, self.vbo);
@@ -216,8 +193,6 @@ impl RenderState {
 					}
 
 					Command::FullscreenQuad(color) => {
-						assert!(current_shader.is_some(), "Must bind a shader before drawing geometry");
-
 						if !fs_quad_bound {
 							fs_quad_bound = true;
 							gl::BindBuffer(gl::ARRAY_BUFFER, self.fs_quad);
@@ -262,13 +237,24 @@ impl RenderState {
 		}
 	}
 
-	pub fn use_shader(&mut self, shader: Shader) {
-		self.commands.push(Command::UseShader(shader));
+	pub fn clear(&mut self) {
+		self.commands.clear();
+		self.verts.clear();
+		self.indices.clear();
+		self.render_start_idx = 0;
 	}
 
-	pub fn set_view(&mut self, mat: &[f32; 16]) {
-		self.commands.push(Command::SetView{index: self.view_matrices.len()});
-		self.view_matrices.push(*mat);
+	pub fn flush_geom(&mut self) {
+		let num_indices = self.indices.len() as u32;
+
+		if num_indices - self.render_start_idx > 0 {
+			self.commands.push(Command::Geom{
+				start: self.render_start_idx,
+				count: num_indices - self.render_start_idx,
+			});
+
+			self.render_start_idx = num_indices;
+		}
 	}
 
 	pub fn draw_fullscreen_quad(&mut self, col: Color) {
@@ -338,33 +324,8 @@ impl RenderState {
 		self.commands.push(Command::ColorWrite(true));
 		self.commands.push(Command::DepthWrite(true));
 	}
-}
 
-impl Drop for RenderState {
-	fn drop(&mut self) {
-		unsafe {
-			gl::DeleteBuffers(1, &self.vbo);
-			gl::DeleteBuffers(1, &self.ebo);
-			gl::DeleteBuffers(1, &self.fs_quad);
-		}
-	}
-}
-
-
-
-
-pub trait ShapeBuilder {
-	fn build_poly_rot(&mut self, pos: Vec2, col: Color, points: u32, s: f32, r: f32);
-	fn build_ring_rot(&mut self, pos: Vec2, col: Color, points: u32, s: f32, thickness: f32, r: f32);
-	fn build_poly(&mut self, pos: Vec2, col: Color, points: u32, s: f32);
-	fn build_ring(&mut self, pos: Vec2, col: Color, points: u32, s: f32, thickness: f32);
-	fn build_from_convex(&mut self, vs: &[Vec2], col: Color);
-	fn build_arc_segs(&mut self, pos: Vec2, col: Color, begin: f32, end: f32, radius: f32, segs: u32);
-	fn build_arc(&mut self, pos: Vec2, col: Color, begin: f32, end: f32, radius: f32);
-}
-
-impl ShapeBuilder for RenderState {
-	fn build_poly_rot(&mut self, pos: Vec2, col: Color, points: u32, s: f32, r: f32) {
+	pub fn build_poly_rot(&mut self, pos: Vec2, col: Color, points: u32, s: f32, r: f32) {
 		if points <= 2 { return }
 
 		let start_idx = self.verts.len() as u16;
@@ -385,7 +346,7 @@ impl ShapeBuilder for RenderState {
 		}
 	}
 
-	fn build_ring_rot(&mut self, pos: Vec2, col: Color, points: u32, s: f32, thickness: f32, r: f32) {
+	pub fn build_ring_rot(&mut self, pos: Vec2, col: Color, points: u32, s: f32, thickness: f32, r: f32) {
 		if points <= 2 { return }
 
 		let start_idx = self.verts.len() as u16;
@@ -410,15 +371,15 @@ impl ShapeBuilder for RenderState {
 		}
 	}
 
-	fn build_poly(&mut self, pos: Vec2, col: Color, points: u32, s: f32) {
+	pub fn build_poly(&mut self, pos: Vec2, col: Color, points: u32, s: f32) {
 		self.build_poly_rot(pos, col, points, s, 0.0);
 	}
 
-	fn build_ring(&mut self, pos: Vec2, col: Color, points: u32, s: f32, thickness: f32) {
+	pub fn build_ring(&mut self, pos: Vec2, col: Color, points: u32, s: f32, thickness: f32) {
 		self.build_ring_rot(pos, col, points, s, thickness, 0.0);
 	}
 
-	fn build_from_convex(&mut self, vs: &[Vec2], col: Color) {
+	pub fn build_from_convex(&mut self, vs: &[Vec2], col: Color) {
 		let points = vs.len();
 		if points <= 2 { return }
 
@@ -435,7 +396,7 @@ impl ShapeBuilder for RenderState {
 		}
 	}
 
-	fn build_arc_segs(&mut self, pos: Vec2, col: Color, begin: f32, end: f32, radius: f32, segs: u32) {
+	pub fn build_arc_segs(&mut self, pos: Vec2, col: Color, begin: f32, end: f32, radius: f32, segs: u32) {
 		let (begin, end) = (begin.min(end), begin.max(end));
 
 		let start_idx = self.verts.len() as u16;
@@ -456,10 +417,20 @@ impl ShapeBuilder for RenderState {
 		}
 	}
 
-	fn build_arc(&mut self, pos: Vec2, col: Color, begin: f32, end: f32, radius: f32) {
+	pub fn build_arc(&mut self, pos: Vec2, col: Color, begin: f32, end: f32, radius: f32) {
 		let max_seg_width = PI / 16.0;
 		let segs = ((end-begin).abs() / max_seg_width).ceil() as u32;
 
 		self.build_arc_segs(pos, col, begin, end, radius, segs);
+	}
+}
+
+impl Drop for UIBuilder {
+	fn drop(&mut self) {
+		unsafe {
+			gl::DeleteBuffers(1, &self.vbo);
+			gl::DeleteBuffers(1, &self.ebo);
+			gl::DeleteBuffers(1, &self.fs_quad);
+		}
 	}
 }

@@ -12,14 +12,13 @@ pub mod gl {
 }
 
 pub mod types;
-pub use self::types::*;
-
-pub mod renderstate;
-pub use self::renderstate::*;
-
 pub mod shader;
+pub mod uibuilder;
 pub mod worldview;
 
+mod parser_3ds;
+
+pub use self::types::*;
 pub use self::shader::*;
 
 pub struct RenderingContext {
@@ -93,7 +92,7 @@ impl RenderingContext {
 		self.viewport
 	}
 
-	pub fn render(&mut self, state: &RenderState) {
+	pub fn prepare_render(&mut self) {
 		if !self.is_current() {
 			assert!(self.make_current());
 		}
@@ -103,8 +102,6 @@ impl RenderingContext {
 			gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT);
 			gl::Viewport(0, 0, self.viewport.size.x, self.viewport.size.y);
 		}
-
-		state.render();
 	}
 }
 

@@ -1,4 +1,5 @@
 use rendering::*;
+use rendering::uibuilder::*;
 use ui::InputTarget;
 
 pub struct MainScreen {}
@@ -12,7 +13,7 @@ impl MainScreen {
 
 	}
 
-	pub fn render(&self, state: &mut RenderState) {
+	pub fn render(&self, builder: &mut UIBuilder) {
 
 	}
 }

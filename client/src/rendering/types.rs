@@ -1,6 +1,7 @@
 pub use common::math::*;
 pub use common::easing::*;
 
+#[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct Color {
 	pub r:f32,

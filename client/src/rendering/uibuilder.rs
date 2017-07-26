@@ -5,11 +5,6 @@ use rendering::shader::Shader;
 use std::ops::Drop;
 use std::f32::consts::PI;
 
-use std::sync::{Once, ONCE_INIT};
-
-static SHADER_INIT: Once = ONCE_INIT;
-static mut UI_SHADER: Shader = Shader::invalid();
-
 static VERT_SRC: &'static str = include_str!("../../assets/ui.vert");
 static FRAG_SRC: &'static str = include_str!("../../assets/ui.frag");
 
@@ -106,6 +101,7 @@ pub struct UIBuilder {
 	pub viewport: Viewport,
 
 	commands: Vec<Command>,
+	shader: Shader,
 
 	verts: Vec<Vertex>,
 	indices: Vec<u16>,
@@ -122,15 +118,10 @@ impl UIBuilder {
 		let mut vbos = [0u32; 3];
 		unsafe { gl::GenBuffers(3, vbos.as_mut_ptr()); }
 
-		unsafe {
-			SHADER_INIT.call_once(|| {
-				UI_SHADER = Shader::new(&VERT_SRC, &FRAG_SRC);
-			});
-		}
-
 		UIBuilder {
 			viewport: Viewport::new(),
 
+			shader: Shader::new(&VERT_SRC, &FRAG_SRC),
 			commands: Vec::new(),
 
 			verts: Vec::new(),
@@ -156,11 +147,11 @@ impl UIBuilder {
 		unsafe {
 			use std::mem::{transmute, size_of, size_of_val};
 
-			UI_SHADER.use_program();
+			self.shader.use_program();
 
 			let aspect = self.viewport.get_aspect();
 
-			UI_SHADER.set_view(&Mat4::scale(Vec3::new(1.0/aspect, 1.0, 1.0)));
+			self.shader.set_view(&Mat4::scale(Vec3::new(1.0/aspect, 1.0, 1.0)));
 
 			let vert_size = size_of::<Vertex>();
 			let short_size = size_of::<u16>();

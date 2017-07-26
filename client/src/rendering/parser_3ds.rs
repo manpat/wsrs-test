@@ -3,19 +3,24 @@ use common::*;
 use std;
 
 pub struct Mesh3DS {
-
+	pub verts: Vec<Vec3>,
+	pub elements: Vec<u16>,
 }
 
-pub fn parse_3ds(data: &[u8]) {
+pub fn parse_3ds(data: &[u8]) -> Option<Mesh3DS> {
 	let magic = read_u16_from_slice(&data[0..2]);
-	if magic != 0x4d4d { return }
+	if magic != 0x4d4d { return None }
 
 	let main_block_len = read_u16_from_slice(&data[2..6]) as usize;
 	println!("main_block_len {} (total: {})", main_block_len, data.len());
 
 	assert!(main_block_len == data.len());
 
-	parse_chunk(&data[6..]);
+	let mut mesh = Mesh3DS {verts: Vec::new(), elements: Vec::new()};
+
+	parse_chunk(&mut mesh, &data[6..]);
+
+	Some(mesh)
 }
 
 fn read_string_from_slice<'a>(data: &'a [u8]) -> &'a str {
@@ -73,7 +78,7 @@ fn parse_color_chunk(data: &[u8]) -> Color {
 
 // http://wayback.archive.org/web/20090404091233/http://www.jalix.org/ressources/graphics/3DS/_unofficials/3ds-info.txt
 // http://wayback.archive.org/web/20090404045225/http://www.whisqu.se/per/docs/graphics56.htm
-fn parse_chunk(data: &[u8]) {
+fn parse_chunk(mut mesh: &mut Mesh3DS, data: &[u8]) {
 	if data.len() < 6 { return }
 
 	let mut idx = 0;
@@ -88,7 +93,7 @@ fn parse_chunk(data: &[u8]) {
 			// 3D editor block
 			0x3d3d => {
 				println!(" . [3D root]");
-				parse_chunk(&header[6..len])
+				parse_chunk(&mut mesh, &header[6..len])
 			},
 
 			// Object block
@@ -96,13 +101,13 @@ fn parse_chunk(data: &[u8]) {
 				let name = read_string_from_slice(&header[6..len]);
 				println!(" . . [object] '{}'", name);
 
-				parse_chunk(&header[6+name.len()+1..]);
+				parse_chunk(&mut mesh, &header[6+name.len()+1..]);
 			}
 
 			// Triangular mesh
 			0x4100 => {
 				println!(" . . . [triangle mesh]");
-				parse_chunk(&header[6..len]);
+				parse_chunk(&mut mesh, &header[6..len]);
 			}
 
 			0x4110 => {
@@ -118,6 +123,8 @@ fn parse_chunk(data: &[u8]) {
 				}
 
 				println!(" . . . . . {:?}", v);
+
+				mesh.verts = v;
 			}
 
 			0x4120 => {
@@ -137,8 +144,10 @@ fn parse_chunk(data: &[u8]) {
 
 				println!(" . . . . . {:?}", v);
 
+				mesh.elements = v;
+
 				let subchunk_offset = 8 + poly_count * inc * 4;
-				parse_chunk(&header[subchunk_offset .. len]);
+				parse_chunk(&mut mesh, &header[subchunk_offset .. len]);
 			}
 
 			0x4130 => {
@@ -149,7 +158,7 @@ fn parse_chunk(data: &[u8]) {
 			// Material block
 			0xAFFF => {
 				println!(" . . [material block]");
-				parse_chunk(&header[6..len]);
+				parse_chunk(&mut mesh, &header[6..len]);
 			}
 
 			// Material name

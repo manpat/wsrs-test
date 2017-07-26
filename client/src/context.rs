@@ -7,7 +7,7 @@ use connection::Connection;
 use common::*;
 use ui::{self, InputTarget};
 
-const DRAG_THRESHOLD: f32 = 5.0;
+const DRAG_THRESHOLD: f32 = 10.0;
 
 #[derive(Copy, Clone)]
 enum ScreenState {
@@ -137,11 +137,12 @@ impl MainContext {
 		self.ui_builder.flush_geom();
 
 		self.render_ctx.prepare_render();
-		self.ui_builder.render();
 
 		if match_enum!(self.screen_state, ScreenState::MainScreen) {
 			self.world_view.render(&vp);
 		}
+		
+		self.ui_builder.render();
 	}
 
 	fn get_input_target<'a>(&'a mut self) -> &'a mut InputTarget {

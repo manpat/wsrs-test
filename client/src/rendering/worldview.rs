@@ -22,6 +22,7 @@ pub struct WorldView {
 	terrain: TerrainView,
 
 	test_model: Mesh3DS,
+	tree_palette: Texture,
 
 	vbo: u32,
 	ebo: u32,
@@ -34,11 +35,29 @@ impl WorldView {
 		let mut bufs = [0u32; 2];
 		unsafe{ gl::GenBuffers(2, bufs.as_mut_ptr()); }
 
+		let pal = [
+			Color::rgb(0.633, 0.825, 0.250),
+
+			Color::rgb(0.633, 0.825, 0.250),
+			Color::rgb(0.531, 0.831, 0.248),
+			Color::rgb(0.455, 0.800, 0.213),
+			Color::rgb(0.339, 0.800, 0.205),
+
+			Color::rgb(0.339, 0.800, 0.205),
+		];
+
+		let mut tree_palette = TextureBuilder::new()
+			.linear_magnify()
+			.finalize();
+
+		tree_palette.upload_1d(&pal);
+
 		WorldView {
 			shader: Shader::new(&WORLD_VERT_SRC, &FRAG_SRC),
 			terrain: TerrainView::new(),
 
 			test_model: parse_3ds(&TEST_MODEL).unwrap(),
+			tree_palette,
 
 			vbo: bufs[0],
 			ebo: bufs[1],
@@ -132,14 +151,17 @@ impl TerrainView {
 
 		terrain_palette.upload_1d(&pal);
 
-		TerrainView {
+		let mut view = TerrainView {
 			shader: Shader::new(&TERRAIN_VERT_SRC, &FRAG_SRC),
 			terrain_palette,
 			
 			health_vbo: bufs[0],
 			vbo: bufs[1],
 			ebo: bufs[2],
-		}
+		};
+
+		view.build_main_buffers();
+		view
 	}
 
 	fn build_main_buffers(&mut self) {
@@ -191,20 +213,24 @@ impl TerrainView {
 	}
 
 	fn render(&mut self, world_mat: &Mat4) {
-		self.build_main_buffers();
 		self.build_health_vbo();
 
 		self.shader.use_program();
 		self.shader.set_view(&world_mat);
 
-		let vert_size = (3*4) as isize;
+		let vert_size = (3*4);
 
 		unsafe {
 			gl::EnableVertexAttribArray(0);
 			gl::EnableVertexAttribArray(1);
 
+			self.terrain_palette.bind_to_slot(0);
+			self.shader.set_uniform_i32("health_lut", 0);
+
+			gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, self.ebo);
+
 			gl::BindBuffer(gl::ARRAY_BUFFER, self.vbo);
-			gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(0));
+			gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, vert_size, transmute(0));
 
 			gl::BindBuffer(gl::ARRAY_BUFFER, self.health_vbo);
 			gl::VertexAttribPointer(1, 1, gl::FLOAT, gl::FALSE, 4, transmute(0));

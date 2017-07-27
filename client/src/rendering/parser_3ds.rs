@@ -2,9 +2,13 @@ use rendering::types::Color;
 use common::*;
 use std;
 
+#[derive(Debug)]
+pub struct FaceMaterial (String, Vec<u16>);
+
 pub struct Mesh3DS {
 	pub verts: Vec<Vec3>,
 	pub elements: Vec<u16>,
+	pub face_materials: Vec<FaceMaterial>,
 }
 
 pub fn parse_3ds(data: &[u8]) -> Option<Mesh3DS> {
@@ -16,9 +20,15 @@ pub fn parse_3ds(data: &[u8]) -> Option<Mesh3DS> {
 
 	assert!(main_block_len == data.len());
 
-	let mut mesh = Mesh3DS {verts: Vec::new(), elements: Vec::new()};
+	let mut mesh = Mesh3DS {
+		verts: Vec::new(),
+		elements: Vec::new(),
+		face_materials: Vec::new(),
+	};
 
 	parse_chunk(&mut mesh, &data[6..]);
+
+	println!("{:?}", mesh.face_materials);
 
 	Some(mesh)
 }
@@ -122,7 +132,7 @@ fn parse_chunk(mut mesh: &mut Mesh3DS, data: &[u8]) {
 					v.push(read_vec3_from_slice(&header[8 + i*inc .. len]));
 				}
 
-				println!(" . . . . . {:?}", v);
+				// println!(" . . . . . {:?}", v);
 
 				mesh.verts = v;
 			}
@@ -142,7 +152,7 @@ fn parse_chunk(mut mesh: &mut Mesh3DS, data: &[u8]) {
 					// v.push(read_u16_from_slice(&header[8 + (i*4 + 0)*inc .. len])); // Flags
 				}
 
-				println!(" . . . . . {:?}", v);
+				// println!(" . . . . . {:?}", v);
 
 				mesh.elements = v;
 
@@ -152,7 +162,18 @@ fn parse_chunk(mut mesh: &mut Mesh3DS, data: &[u8]) {
 
 			0x4130 => {
 				let mat_name = read_string_from_slice(&header[6..len]);
-				println!(" . . . . . [faces material] {}", mat_name);
+				let num_entries = read_u16_from_slice(&header[6+mat_name.len()+1 .. len]);
+				let entries = &header[6 + mat_name.len()+1 + 2 .. len];
+
+				println!(" . . . . . [faces material] {} {}", mat_name, num_entries);
+
+				let mut v = Vec::new();
+
+				for i in 0..num_entries as usize {
+					v.push(read_u16_from_slice(&entries[i*2..]));
+				}
+
+				mesh.face_materials.push(FaceMaterial(mat_name.to_string(), v));
 			}
 
 			// Material block

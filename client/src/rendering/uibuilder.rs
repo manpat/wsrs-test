@@ -11,17 +11,12 @@ static FRAG_SRC: &'static str = include_str!("../../assets/ui.frag");
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct Vertex {
-	pos: Vec3,
+	pos: Vec2,
 	color: Color,
 }
 
 impl Vertex {
-	fn new_2d(p: Vec2, color: Color) -> Vertex {
-		let pos = Vec3::new(p.x, p.y, 0.0);
-		Vertex {pos, color}
-	}
-
-	fn new(pos: Vec3, color: Color) -> Vertex {
+	fn new(pos: Vec2, color: Color) -> Vertex {
 		Vertex {pos, color}
 	}
 }
@@ -165,8 +160,8 @@ impl UIBuilder {
 
 			gl::BindBuffer(gl::ARRAY_BUFFER, self.vbo);
 			gl::BufferData(gl::ARRAY_BUFFER, (self.verts.len()*vert_size) as isize, transmute(self.verts.as_ptr()), gl::STREAM_DRAW);
-			gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(0));
-			gl::VertexAttribPointer(1, 4, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(12));
+			gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(0));
+			gl::VertexAttribPointer(1, 4, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(8));
 
 			let mut fs_quad_bound = false;
 
@@ -176,8 +171,8 @@ impl UIBuilder {
 						if fs_quad_bound {
 							fs_quad_bound = false;
 							gl::BindBuffer(gl::ARRAY_BUFFER, self.vbo);
-							gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(0));
-							gl::VertexAttribPointer(1, 4, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(12));
+							gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(0));
+							gl::VertexAttribPointer(1, 4, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(8));
 						}
 
 						gl::DrawElements(gl::TRIANGLES, count as i32, gl::UNSIGNED_SHORT, transmute(start*short_size as u32));
@@ -187,15 +182,15 @@ impl UIBuilder {
 						if !fs_quad_bound {
 							fs_quad_bound = true;
 							gl::BindBuffer(gl::ARRAY_BUFFER, self.fs_quad);
-							gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(0));
-							gl::VertexAttribPointer(1, 4, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(12));
+							gl::VertexAttribPointer(0, 2, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(0));
+							gl::VertexAttribPointer(1, 4, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(8));
 						}
 
 						let fsquad = [
-							Vertex::new_2d(self.viewport.get_bottom_left(), color),
-							Vertex::new_2d(self.viewport.get_top_left(), color),
-							Vertex::new_2d(self.viewport.get_top_right(), color),
-							Vertex::new_2d(self.viewport.get_bottom_right(), color),
+							Vertex::new(self.viewport.get_bottom_left(), color),
+							Vertex::new(self.viewport.get_top_left(), color),
+							Vertex::new(self.viewport.get_top_right(), color),
+							Vertex::new(self.viewport.get_bottom_right(), color),
 						];
 
 						gl::BufferData(gl::ARRAY_BUFFER, size_of_val(&fsquad) as isize, transmute(fsquad.as_ptr()), gl::STREAM_DRAW);
@@ -327,7 +322,7 @@ impl UIBuilder {
 		for i in 0..points {
 			let th = i as f32 * inc + r;
 			let p = pos + Vec2::from_angle(th) * s;
-			self.verts.push(Vertex::new_2d(p, col));
+			self.verts.push(Vertex::new(p, col));
 		}
 
 		for i in 1..(points-1) as u16 {
@@ -349,8 +344,8 @@ impl UIBuilder {
 			let th = i as f32 * inc + r;
 			let p0 = pos + Vec2::from_angle(th) * s;
 			let p1 = pos + Vec2::from_angle(th) * (s+thickness);
-			self.verts.push(Vertex::new_2d(p0, col));
-			self.verts.push(Vertex::new_2d(p1, col));
+			self.verts.push(Vertex::new(p0, col));
+			self.verts.push(Vertex::new(p1, col));
 		}
 
 		let points = points as u16;
@@ -377,7 +372,7 @@ impl UIBuilder {
 		let start_idx = self.verts.len() as u16;
 
 		for &p in vs.iter() {
-			self.verts.push(Vertex::new_2d(p, col));
+			self.verts.push(Vertex::new(p, col));
 		}
 
 		for i in 1..(points-1) as u16 {
@@ -395,10 +390,10 @@ impl UIBuilder {
 		let diff = end-begin;
 		let seg_width = diff / segs as f32;
 
-		self.verts.push(Vertex::new_2d(pos, col));
+		self.verts.push(Vertex::new(pos, col));
 		for i in 0..(segs+1) {
 			let offset = Vec2::from_angle(begin+seg_width*i as f32) * radius;
-			self.verts.push(Vertex::new_2d(pos + offset, col));
+			self.verts.push(Vertex::new(pos + offset, col));
 		}
 
 		for i in 1..(segs+1) as u16 {

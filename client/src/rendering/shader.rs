@@ -71,6 +71,18 @@ impl Shader {
 		}
 	}
 
+	pub fn set_uniform_i32(&self, uniform: &str, v: i32) {
+		use std::ffi::CString;
+
+		unsafe {
+			// TODO: Make sure we're bound
+			let cstr = CString::new(uniform).unwrap();
+
+			let loc = gl::GetUniformLocation(self.gl_handle, cstr.as_ptr());
+			gl::Uniform1i(loc, v);
+		}		
+	}
+
 	pub fn set_proj(&self, mat: &Mat4) {
 		self.set_uniform_mat(self.proj_loc, &mat);
 	}

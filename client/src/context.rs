@@ -88,20 +88,20 @@ impl MainContext {
 			ScreenState::AuthScreen => {
 				self.auth_screen.update(dt);
 
-				use ui::AuthScreenAction as ASA;
+				use ui::auth_screen::Action;
 
 				match self.auth_screen.poll_actions() {
-					Some(ASA::TryAuth(key)) => {
+					Some(Action::TryAuth(key)) => {
 						println!("Really requesing auth {}", key);
 						self.connection.send(&Packet::AttemptAuthSession(key));
 					}
 
-					Some(ASA::RequestNewSession) => {
+					Some(Action::RequestNewSession) => {
 						println!("Requesting new session");
 						self.connection.send(&Packet::RequestNewSession);
 					}
 
-					Some(ASA::EnterGame) => {
+					Some(Action::EnterGame) => {
 						println!("Pls enter game");
 						self.screen_state = ScreenState::MainScreen;
 					}
@@ -112,6 +112,21 @@ impl MainContext {
 
 			ScreenState::MainScreen => {
 				self.main_screen.update(dt);
+				self.world_view.update(dt);
+
+				use ui::main_screen::Action;
+
+				while let Some(act) = self.main_screen.poll_actions() {
+					match act {
+						Action::Translate(v) => {
+							self.world_view.try_world_translate(v);
+						}
+
+						Action::ClickWorld(p) => {
+							self.world_view.try_place_tree(p);
+						}
+					}
+				}
 			}
 		}
 	}

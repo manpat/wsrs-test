@@ -3,7 +3,7 @@ use common::*;
 use std;
 
 #[derive(Debug)]
-pub struct FaceMaterial (String, Vec<u16>);
+pub struct FaceMaterial (pub String, pub Vec<u16>);
 
 pub struct Mesh3DS {
 	pub verts: Vec<Vec3>,

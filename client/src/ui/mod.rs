@@ -3,8 +3,8 @@ pub mod main_screen;
 
 use common::math::*;
 
-pub use ui::auth_screen::*;
-pub use ui::main_screen::*;
+pub use ui::auth_screen::AuthScreen;
+pub use ui::main_screen::MainScreen;
 
 pub trait InputTarget {
 	fn on_drag_start(&mut self, pos: Vec2);

@@ -46,7 +46,7 @@ struct StatusRing {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum AuthScreenAction {
+pub enum Action {
 	RequestNewSession,
 	TryAuth(u32),
 	EnterGame,
@@ -59,7 +59,7 @@ pub struct AuthScreen {
 	pub viewport: Viewport,
 	download_button_pos: Vec2,
 
-	action: Option<AuthScreenAction>,
+	action: Option<Action>,
 
 	hide_anim_phase: Option<f32>,
 }
@@ -90,13 +90,14 @@ impl AuthScreen {
 
 	pub fn on_connect(&mut self) {
 		self.status_ring.start_animation(StatusAnimation::Connect);
+		self.set_key(123);
 	}
 
 	pub fn on_disconnect(&mut self) {
 		self.status_ring.start_animation(StatusAnimation::Disconnect);
 	}
 
-	pub fn poll_actions(&mut self) -> Option<AuthScreenAction> {
+	pub fn poll_actions(&mut self) -> Option<Action> {
 		let action = self.action;
 		self.action = None;
 		action
@@ -112,7 +113,7 @@ impl AuthScreen {
 			Some(phase) if phase < 1.0 => Some(phase + dt),
 
 			Some(_) => {
-				self.action = Some(AuthScreenAction::EnterGame);
+				self.action = Some(Action::EnterGame);
 				None
 			}
 
@@ -164,7 +165,7 @@ impl InputTarget for AuthScreen {
 
 	fn on_drag_end(&mut self, pos: Vec2) {
 		if self.status_ring.on_drag_end(pos) {
-			self.action = Some(AuthScreenAction::RequestNewSession);
+			self.action = Some(Action::RequestNewSession);
 		}
 	}
 
@@ -181,7 +182,7 @@ impl InputTarget for AuthScreen {
 		} else if self.status_ring.on_click(click_pos) {
 			let key = self.calculate_key();
 			println!("Requesting auth {}", key);
-			self.action = Some(AuthScreenAction::TryAuth(key));
+			self.action = Some(Action::TryAuth(key));
 		}
 
 		if (self.download_button_pos - click_pos).length() < 0.1 {

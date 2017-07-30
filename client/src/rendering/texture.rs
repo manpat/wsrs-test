@@ -2,11 +2,11 @@ use rendering::gl;
 use rendering::types::*;
 
 pub struct Texture {
-	gl_handle: u32,
+	pub gl_handle: u32,
 	pub size: Vec2i,
 }
 
-pub struct TextureBuilder { gl_handle: u32 }
+pub struct TextureBuilder { gl_handle: u32, size: Vec2i }
 
 impl Texture {
 	pub fn bind_to_slot(&self, slot: u32) {
@@ -18,10 +18,23 @@ impl Texture {
 
 	pub fn upload_1d(&mut self, data: &[Color]) {
 		unsafe {
+			let len = data.len() as u32;
+			assert!((len & (len-1)) == 0, "Textures must be POW2");
+
 			self.size = Vec2i::new(data.len() as i32, 1);
 
+			let mut v = Vec::with_capacity(data.len() * 4);
+			for c in data.iter() {
+				let (r,g,b,a) = c.to_byte_tuple();
+
+				v.push(r);
+				v.push(g);
+				v.push(b);
+				v.push(a);
+			}
+
 			gl::BindTexture(gl::TEXTURE_2D, self.gl_handle);
-			gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA as i32, self.size.x, 1, 0, gl::RGBA, gl::FLOAT, data.as_ptr() as *const _);
+			gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA as i32, self.size.x, 1, 0, gl::RGBA, gl::UNSIGNED_BYTE, v.as_ptr() as *const _);
 		}
 	}
 }
@@ -39,17 +52,17 @@ impl TextureBuilder {
 			gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
 		}
 
-		TextureBuilder { gl_handle }
+		TextureBuilder { gl_handle, size: Vec2i::zero() }
 	}
 
 	pub fn finalize(&self) -> Texture {
 		Texture {
 			gl_handle: self.gl_handle,
-			size: Vec2i::zero(),
+			size: self.size,
 		}
 	}
 
-	pub fn linear_minify(&self) -> &Self {
+	pub fn linear_minify(&mut self) -> &Self {
 		unsafe {
 			gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
 		}
@@ -57,7 +70,7 @@ impl TextureBuilder {
 		self
 	}
 
-	pub fn linear_magnify(&self) -> &Self {
+	pub fn linear_magnify(&mut self) -> &Self {
 		unsafe {
 			gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
 		}

@@ -2,6 +2,8 @@ use std;
 use common::math::*;
 use rendering::gl;
 
+use std::mem::transmute;
+
 #[derive(Copy, Clone)]
 pub struct Shader {
 	pub gl_handle: u32,
@@ -64,30 +66,46 @@ impl Shader {
 		}
 	}
 
-	pub fn set_uniform_mat(&self, uniform: i32, mat: &Mat4) {
+	pub fn get_uniform_loc(&self, uniform: &str) -> i32 {
+		use std::ffi::CString;
+
+		unsafe {
+			// TODO: Make sure we're bound
+			let cstr = CString::new(uniform).unwrap();
+			gl::GetUniformLocation(self.gl_handle, cstr.as_ptr())
+		}
+	}
+
+	pub fn set_uniform_mat(&self, uniform: &str, mat: &Mat4) {
+		self.set_uniform_mat_raw(self.get_uniform_loc(&uniform), &mat);
+	}
+	
+	pub fn set_uniform_mat_raw(&self, uniform: i32, mat: &Mat4) {
 		unsafe {
 			// TODO: Make sure we're bound
 			gl::UniformMatrix4fv(uniform, 1, 0, mat.transpose().rows.as_ptr() as *const f32);
 		}
 	}
 
-	pub fn set_uniform_i32(&self, uniform: &str, v: i32) {
-		use std::ffi::CString;
-
+	pub fn set_uniform_vec3(&self, uniform: &str, v: &Vec3) {
 		unsafe {
 			// TODO: Make sure we're bound
-			let cstr = CString::new(uniform).unwrap();
+			gl::Uniform3f(self.get_uniform_loc(&uniform), v.x, v.y, v.z);
+		}
+	}
 
-			let loc = gl::GetUniformLocation(self.gl_handle, cstr.as_ptr());
-			gl::Uniform1i(loc, v);
+	pub fn set_uniform_i32(&self, uniform: &str, v: i32) {
+		unsafe {
+			// TODO: Make sure we're bound
+			gl::Uniform1i(self.get_uniform_loc(&uniform), v);
 		}		
 	}
 
 	pub fn set_proj(&self, mat: &Mat4) {
-		self.set_uniform_mat(self.proj_loc, &mat);
+		self.set_uniform_mat_raw(self.proj_loc, &mat);
 	}
 
 	pub fn set_view(&self, mat: &Mat4) {
-		self.set_uniform_mat(self.view_loc, &mat);
+		self.set_uniform_mat_raw(self.view_loc, &mat);
 	}
 }

@@ -29,6 +29,9 @@ impl Color {
 		let Color{r,g,b,a} = *self;
 		((r*255.0) as u8, (g*255.0) as u8, (b*255.0) as u8, (a*255.0) as u8)
 	}
+
+	pub fn to_vec3(&self) -> Vec3 { Vec3::new(self.r, self.g, self.b) }
+	pub fn to_vec4(&self) -> Vec4 { Vec4::new(self.r, self.g, self.b, self.a) }
 }
 
 macro_rules! impl_ease_for_color {

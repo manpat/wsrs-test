@@ -16,7 +16,7 @@ static WORLD_FRAG_SRC: &'static str = include_str!("../../assets/world.frag");
 // static TEST_MODEL: &'static [u8] = include_bytes!("../../assets/test_model.3ds");
 static TEST_MODEL: &'static [u8] = include_bytes!("../../assets/forestconcept.3ds");
 
-const MAP_SIZE: u32 = 14;
+const MAP_SIZE: u32 = 28;
 
 #[derive(Debug)]
 struct TreeVertex {

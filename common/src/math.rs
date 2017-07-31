@@ -1,6 +1,6 @@
 use easing::*;
 
-use std::ops::{Add, Sub, Mul};
+use std::ops::{Add, Sub, Mul, Div};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -167,6 +167,13 @@ impl Mul<f32> for Vec2 {
 	type Output = Vec2;
 	fn mul(self, o: f32) -> Vec2 {
 		Vec2::new(self.x * o, self.y * o)
+	}
+}
+
+impl Div<Vec2> for Vec2 {
+	type Output = Vec2;
+	fn div(self, o: Vec2) -> Vec2 {
+		Vec2::new(self.x / o.x, self.y / o.y)
 	}
 }
 

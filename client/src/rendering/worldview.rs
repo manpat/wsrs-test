@@ -4,7 +4,6 @@ use rendering::shader::Shader;
 
 use rendering::parser_3ds::*;
 use rendering::texture::*;
-use rendering::framebuffer::*;
 
 use std::f32::consts::PI;
 use std::mem::{transmute, size_of, size_of_val};
@@ -17,7 +16,7 @@ static WORLD_FRAG_SRC: &'static str = include_str!("../../assets/world.frag");
 // static TEST_MODEL: &'static [u8] = include_bytes!("../../assets/test_model.3ds");
 static TEST_MODEL: &'static [u8] = include_bytes!("../../assets/forestconcept.3ds");
 
-const MAP_SIZE: u32 = 7;
+const MAP_SIZE: u32 = 14;
 
 #[derive(Debug)]
 struct TreeVertex {
@@ -37,7 +36,6 @@ struct TreeMesh {
 }
 
 pub struct WorldView {
-	fb: Framebuffer,
 	shader: Shader,
 	terrain: TerrainView,
 
@@ -75,10 +73,6 @@ impl WorldView {
 
 		// tree_palette.upload_1d(&pal);
 
-		let mut fbuilder = FramebufferBuilder::new(Vec2i::new(800, 600));
-		fbuilder.add_depth();
-
-
 		let mut trees = Vec::new();
 
 		for i in 1..MAP_SIZE-1 {
@@ -87,7 +81,6 @@ impl WorldView {
 		}
 
 		WorldView {
-			fb: fbuilder.finalize(),
 			shader: Shader::new(&WORLD_VERT_SRC, &WORLD_FRAG_SRC),
 			terrain: TerrainView::new(),
 
@@ -147,11 +140,6 @@ impl WorldView {
 
 			let vert_size = size_of::<TreeVertex>() as isize;
 
-			gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
-			// gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, self.ebo);
-			// gl::BufferData(gl::ELEMENT_ARRAY_BUFFER, (self.test_model.elems.len()*2) as isize,
-			// 	transmute(self.test_model.elems.as_ptr()), gl::STREAM_DRAW);
-
 			gl::BindBuffer(gl::ARRAY_BUFFER, self.vbo);
 			gl::BufferData(gl::ARRAY_BUFFER, self.test_model.verts.len() as isize * vert_size,
 				transmute(self.test_model.verts.as_ptr()), gl::STREAM_DRAW);
@@ -160,12 +148,11 @@ impl WorldView {
 			gl::VertexAttribPointer(1, 3, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(size_of::<Vec3>()));
 
 			let trunk_color = Color::rgb(0.8, 0.411, 0.22);
-			let leafage_color = Color::rgb(0.339, 0.800, 0.205);
 
 			for &p in &self.trees {
 				self.shader.set_view(&(world_mat * Mat4::translate(p)));
 
-				let divisor = (MAP_SIZE - 1) as f32;
+				let divisor = (MAP_SIZE as f32 - 1.0) * 2.0;
 				let health = p.z / divisor;
 
 				self.shader.set_uniform_vec3("color", &trunk_color.to_vec3());
@@ -196,14 +183,21 @@ impl WorldView {
 
 	fn get_tree_color(health: f32) -> Color {
 		let pal = [
-			Color::rgb(0.633, 0.825, 0.250),
-			Color::rgb(0.531, 0.831, 0.248),
-			Color::rgb(0.455, 0.800, 0.213),
-			Color::rgb(0.339, 0.800, 0.205),
+			Color::rgb(0.778, 0.895, 0.241),
+			Color::rgb(0.593, 0.928, 0.257),
+			Color::rgb(0.348, 0.800, 0.185),
+			Color::rgb(0.197, 0.800, 0.202),
 		];
 
-		let pal_idx = ((health * (pal.len()-1) as f32) as usize).max(0).min(pal.len()-1);
-		return pal[pal_idx];
+		let real_idx = health * pal.len() as f32;
+		let real_next = real_idx + 1.0;
+
+		let pal_idx = (real_idx as usize).max(0).min(pal.len()-1);
+		let pal_next = (real_next as usize).max(0).min(pal.len()-1);
+
+		let col_a = pal[pal_idx];
+		let col_b = pal[pal_next];
+		return real_idx.fract().ease_linear(col_a, col_b, 1.0);
 	}
 }
 
@@ -320,6 +314,8 @@ impl TerrainView {
 			gl::VertexAttribPointer(1, 1, gl::FLOAT, gl::FALSE, 4, transmute(0));
 
 			gl::DrawElements(gl::TRIANGLES, (MAP_SIZE * MAP_SIZE) as i32 * 6, gl::UNSIGNED_SHORT, transmute(0));
+
+			gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, 0);
 		}
 	}
 }

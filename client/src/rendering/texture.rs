@@ -19,7 +19,8 @@ impl Texture {
 	pub fn upload_1d(&mut self, data: &[Color]) {
 		unsafe {
 			let len = data.len() as u32;
-			assert!((len & (len-1)) == 0, "Textures must be POW2");
+			// assert!((len & (len-1)) == 0, "Textures must be POW2");
+			assert!(len.is_power_of_two(), "Textures must be POW2");
 
 			self.size = Vec2i::new(data.len() as i32, 1);
 

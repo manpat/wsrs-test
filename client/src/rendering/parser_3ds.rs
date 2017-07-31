@@ -16,7 +16,6 @@ pub fn parse_3ds(data: &[u8]) -> Option<Mesh3DS> {
 	if magic != 0x4d4d { return None }
 
 	let main_block_len = read_u16_from_slice(&data[2..6]) as usize;
-	println!("main_block_len {} (total: {})", main_block_len, data.len());
 
 	assert!(main_block_len == data.len());
 
@@ -28,7 +27,7 @@ pub fn parse_3ds(data: &[u8]) -> Option<Mesh3DS> {
 
 	parse_chunk(&mut mesh, &data[6..]);
 
-	println!("{:?}", mesh.face_materials);
+	// println!("{:?}", mesh.face_materials);
 
 	Some(mesh)
 }
@@ -102,27 +101,27 @@ fn parse_chunk(mut mesh: &mut Mesh3DS, data: &[u8]) {
 		match id {
 			// 3D editor block
 			0x3d3d => {
-				println!(" . [3D root]");
+				// println!(" . [3D root]");
 				parse_chunk(&mut mesh, &header[6..len])
 			},
 
 			// Object block
 			0x4000 => {
 				let name = read_string_from_slice(&header[6..len]);
-				println!(" . . [object] '{}'", name);
+				// println!(" . . [object] '{}'", name);
 
 				parse_chunk(&mut mesh, &header[6+name.len()+1..]);
 			}
 
 			// Triangular mesh
 			0x4100 => {
-				println!(" . . . [triangle mesh]");
+				// println!(" . . . [triangle mesh]");
 				parse_chunk(&mut mesh, &header[6..len]);
 			}
 
 			0x4110 => {
 				let count = read_u16_from_slice(&header[6..len]) as usize;
-				println!(" . . . . [vertices list] {}", count);
+				// println!(" . . . . [vertices list] {}", count);
 
 				let mut v = Vec::with_capacity(count);
 
@@ -140,7 +139,7 @@ fn parse_chunk(mut mesh: &mut Mesh3DS, data: &[u8]) {
 			0x4120 => {
 				let poly_count = read_u16_from_slice(&header[6..len]) as usize;
 
-				println!(" . . . . [faces description] {}", poly_count);
+				// println!(" . . . . [faces description] {}", poly_count);
 
 				let mut v = Vec::with_capacity(poly_count);
 				let inc = 2;
@@ -165,7 +164,7 @@ fn parse_chunk(mut mesh: &mut Mesh3DS, data: &[u8]) {
 				let num_entries = read_u16_from_slice(&header[6+mat_name.len()+1 .. len]);
 				let entries = &header[6 + mat_name.len()+1 + 2 .. len];
 
-				println!(" . . . . . [faces material] {} {}", mat_name, num_entries);
+				// println!(" . . . . . [faces material] {} {}", mat_name, num_entries);
 
 				let mut v = Vec::new();
 
@@ -178,20 +177,20 @@ fn parse_chunk(mut mesh: &mut Mesh3DS, data: &[u8]) {
 
 			// Material block
 			0xAFFF => {
-				println!(" . . [material block]");
-				parse_chunk(&mut mesh, &header[6..len]);
+				// println!(" . . [material block]");
+				// parse_chunk(&mut mesh, &header[6..len]);
 			}
 
 			// Material name
 			0xA000 => {
-				let name = read_string_from_slice(&header[6..len]);
-				println!(" . . . [material name] '{}'", name);
+				// let name = read_string_from_slice(&header[6..len]);
+				// println!(" . . . [material name] '{}'", name);
 			}
 
 			// Material diffuse color
 			0xA020 => {
-				let col = parse_color_chunk(&header[6..len]);
-				println!(" . . . [material diffuse color] {:?}", col);
+				// let col = parse_color_chunk(&header[6..len]);
+				// println!(" . . . [material diffuse color] {:?}", col);
 			}
 
 			_ => {}

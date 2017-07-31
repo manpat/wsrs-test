@@ -19,6 +19,15 @@ macro_rules! match_enum {
 	}
 }
 
+pub fn write_f32_to_slice(dst: &mut [u8], value: f32) {
+	assert!(dst.len() >= 4);
+
+	use std::mem::transmute;
+
+	let a: [u8; 4] = unsafe {transmute(value)};
+	dst[..4].copy_from_slice(&a);
+}
+
 pub fn write_u32_to_slice(dst: &mut [u8], value: u32) {
 	assert!(dst.len() >= 4);
 

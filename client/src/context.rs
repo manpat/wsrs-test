@@ -17,6 +17,7 @@ enum ScreenState {
 
 pub struct MainContext {
 	connection: Box<Connection>,
+	auth_token: Option<u32>,
 
 	prev_frame: time::Instant,
 
@@ -47,6 +48,7 @@ impl MainContext {
 
 		MainContext {
 			connection,
+			auth_token: None,
 			prev_frame: time::Instant::now(),
 
 			render_ctx,
@@ -69,6 +71,10 @@ impl MainContext {
 	pub fn on_connect(&mut self) {
 		println!("Connected...");
 		self.auth_screen.on_connect();
+
+		if let Some(token) = self.auth_token {
+			self.connection.send(&Packet::AttemptAuthSession(token));
+		}
 	}
 	
 	pub fn on_disconnect(&mut self) {
@@ -123,7 +129,9 @@ impl MainContext {
 						}
 
 						Action::ClickWorld(p) => {
-							self.world_view.try_place_tree(p);
+							// self.world_view.try_place_tree(p);
+							let pos = self.world_view.convert_to_world_coords(p);
+							self.connection.send(&Packet::RequestPlaceTree(pos.x, pos.z));
 						}
 					}
 				}
@@ -227,19 +235,31 @@ impl MainContext {
 			match packet {
 				Packet::AuthSuccessful(token) => {
 					println!("Auth success: {}", token);
-					self.auth_screen.on_auth_success();
+					
 					// Hide screen
-				},
+					self.auth_screen.on_auth_success();
+					self.auth_token = Some(token);
+
+					self.connection.send(&Packet::RequestDownloadWorld);
+				}
 
 				Packet::AuthFail => {
 					println!("Auth fail");
 					self.auth_screen.on_auth_fail();
-				},
+				}
 
 				Packet::NewSession(token) => {
 					println!("New session: {}", token);
 					self.auth_screen.set_key(token);
-				},
+				}
+
+				Packet::TreePlaced(id, pos_x, pos_y) => {
+					self.world_view.place_tree(id, Vec3::new(pos_x, 0.0, pos_y));
+				}
+
+				Packet::TreeDied(id) => {
+					self.world_view.kill_tree(id);
+				}
 
 				_ => {}
 			}

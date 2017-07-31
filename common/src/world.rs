@@ -1,12 +1,4 @@
-#[derive(Copy, Clone, Debug)]
-pub struct Pos (pub f32, pub f32);
-
-impl Pos {
-	pub fn dist_to(&self, o: &Pos) -> f32 {
-		let (x,y) = (self.0-o.0, self.1-o.1);
-		(x*x + y*y).sqrt()
-	}
-}
+use math::*;
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Species {
@@ -33,7 +25,7 @@ pub enum Maturity {
 pub struct Tree {
 	pub species: Species,
 	pub maturity: Maturity,
-	pub pos: Pos,
+	pub pos: Vec2,
 	pub id: u32,
 }
 

@@ -28,12 +28,19 @@ enum NetworkMessage {
 	NewSession(ConnectionID, u32),
 	AuthSuccess(ConnectionID, u32),
 	AuthFail(ConnectionID),
+
+	WorldStateReady(ConnectionID, Vec<(u32, Vec2)>),
+	PlaceTree(u32, Vec2),
+	KillTree(u32),
 }
 
 // network thread -> sim thread
 enum SimulationMessage {
 	RequestNewSession(ConnectionID),
 	AttemptAuthSession(ConnectionID, u32),
+
+	RequestWorldState(ConnectionID),
+	RequestPlaceTree(ConnectionID, Vec2),
 }
 
 fn main() {
@@ -117,26 +124,53 @@ fn network_loop(rx: mpsc::Receiver<NetworkMessage>, tx: mpsc::Sender<SimulationM
 					if connections.notify_new_session(id) {
 						packet_queue.push((Some(id), Packet::NewSession(token)));
 					}
-				},
+				}
 
 				NM::AuthSuccess(id, token) => {
 					if connections.imbue_session(id, token) {
 						packet_queue.push((Some(id), Packet::AuthSuccessful(token)));
 					}
-				},
+				}
 
 				NM::AuthFail(id) => {
 					connections.notify_auth_fail(id);
 					packet_queue.push((Some(id), Packet::AuthFail));
 				}
+
+				NM::WorldStateReady(id, state) => {
+					for (t_id, pos) in state {
+						// This is p' heavy - best not send hundreds of packets at once probably
+						packet_queue.push((Some(id), Packet::TreePlaced(t_id, pos.x, pos.y)));
+					}
+				}
+
+				NM::PlaceTree(tree_id, pos) => {
+					packet_queue.push((None, Packet::TreePlaced(tree_id, pos.x, pos.y)));
+				}
+
+				NM::KillTree(tree_id) => {
+					packet_queue.push((None, Packet::TreeDied(tree_id)));
+				}
 			}
 		}
+
+		use SimulationMessage as SM;
 
 		while let Some((id, packet)) = connections.try_read(&mut packet_buffer) {
 			match packet {
 				Packet::Debug(s) => {
 					println!("Debug ({}): {}", id, s);
-				},
+				}
+
+				Packet::RequestDownloadWorld => {
+					println!("Request world state ({})", id);
+					tx.send(SM::RequestWorldState(id)).unwrap();
+				}
+
+				Packet::RequestPlaceTree(x, y) => {
+					println!("place tree ({}): {}, {}", id, x, y);
+					tx.send(SM::RequestPlaceTree(id, Vec2::new(x, y))).unwrap();
+				}
 
 				_ => {}
 			}
@@ -145,11 +179,11 @@ fn network_loop(rx: mpsc::Receiver<NetworkMessage>, tx: mpsc::Sender<SimulationM
 		connections.flush();
 
 		while let Some(id) = connections.poll_new_sessions() {
-			tx.send(SimulationMessage::RequestNewSession(id)).unwrap();
+			tx.send(SM::RequestNewSession(id)).unwrap();
 		}
 
 		while let Some((id, token)) = connections.poll_auth_attempts() {
-			tx.send(SimulationMessage::AttemptAuthSession(id, token)).unwrap();
+			tx.send(SM::AttemptAuthSession(id, token)).unwrap();
 		}
 
 		for &(id, ref p) in &packet_queue {
@@ -172,14 +206,17 @@ fn network_loop(rx: mpsc::Receiver<NetworkMessage>, tx: mpsc::Sender<SimulationM
 
 fn sim_loop(tx: mpsc::Sender<NetworkMessage>, rx: mpsc::Receiver<SimulationMessage>) {
 	use world::World;
+	use world::Species;
+
+	use NetworkMessage as NM;
+	use SimulationMessage as SM;
 
 	let mut world = World::new();
 
 	'main: loop {
 		while let Some(msg) = rx.try_recv().ok() {
-			use SimulationMessage as SM;
-			use NetworkMessage as NM;
 
+			// TODO: Remove all of these unwraps, save world state and exit gracefully
 			match msg {
 				SM::RequestNewSession(con_id) => {
 					// Create new session
@@ -190,13 +227,31 @@ fn sim_loop(tx: mpsc::Sender<NetworkMessage>, rx: mpsc::Receiver<SimulationMessa
 					// TODO: not this
 					
 					tx.send(NM::NewSession(con_id, random_key)).unwrap();
-				},
+
+					// TODO: Test if con_id already associated with pending session and delete
+					// 	associate new session with connection and flag as pending
+					// 	remove flag and persist once authed
+				}
 
 				SM::AttemptAuthSession(con_id, token) => {
-					if token != 123 {
-						tx.send(NM::AuthFail(con_id)).unwrap()
-					} else {
-						tx.send(NM::AuthSuccess(con_id, token)).unwrap()
+					// Just accept everything for now
+					tx.send(NM::AuthSuccess(con_id, token)).unwrap();
+				}
+
+				SM::RequestWorldState(con_id) => {
+					let mut state = world.trees.iter()
+						.filter(|t| !t.is_dead())
+						.map(|t| (t.id, t.pos))
+						.collect::<Vec<_>>();
+
+					tx.send(NM::WorldStateReady(con_id, state)).unwrap();
+				}
+
+				SM::RequestPlaceTree(con_id, pos) => {
+					// TODO: Check con_id has a session and hasn't already
+					//	placed too many trees
+					if let Some(t_id) = world.place_tree(Species::A, pos) {
+						tx.send(NM::PlaceTree(t_id, pos)).unwrap();
 					}
 				}
 			}
@@ -204,8 +259,14 @@ fn sim_loop(tx: mpsc::Sender<NetworkMessage>, rx: mpsc::Receiver<SimulationMessa
 
 		world.update();
 
+		for &t_id in &world.dead_trees {
+			tx.send(NM::KillTree(t_id)).unwrap();
+		}
+
+		world.dead_trees.clear();
+
 		// for e in world.events { tx.send(NetworkMessage::Blah) }
 
-		thread::sleep(time::Duration::from_millis(100));
+		thread::sleep(time::Duration::from_millis(50));
 	}
 }

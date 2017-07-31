@@ -1,7 +1,9 @@
-use std::time::{Instant, Duration};
-use common::world::*;
+pub use common::world::*;
 
-const WORLD_DIMS: (usize,usize) = (20, 20);
+use std::time::{Instant, Duration};
+use common::math::*;
+
+const WORLD_DIMS: (usize,usize) = (28, 28);
 const DIVERSITY_RANGE: f32 = 1.3;
 const DEATH_AFFECT_RANGE: f32 = 1.0;
 const GROWTH_AFFECT_RANGE: f32 = 2.0;
@@ -14,6 +16,8 @@ pub struct World {
 
 	next_tree_id: u32,
 	last_tick: Instant,
+
+	pub dead_trees: Vec<u32>,
 }
 
 impl World {
@@ -25,25 +29,34 @@ impl World {
 			next_tree_id: 0,
 
 			last_tick: Instant::now(),
+
+			dead_trees: Vec::new(),
 		}
 	}
 
-	pub fn place_tree(&mut self, s: Species, p: Pos) -> bool {
+	pub fn place_tree(&mut self, s: Species, pos: Vec2) -> Option<u32> {
+		let (x,y) = (pos.x as usize, pos.y as usize);
+
+		if x >= WORLD_DIMS.0 || y >= WORLD_DIMS.1 { return None }
+
 		let pos_available = self.trees.iter()
-			.all(|x| x.pos.dist_to(&p) > TREE_RADIUS);
+			.all(|x| (x.pos - pos).length() > TREE_RADIUS);
 
 		if pos_available {
-			self.trees.push(Tree{
+			let id = self.next_tree_id;
+
+			self.trees.push(Tree {
 				species: s,
 				maturity: Maturity::Seed(0),
-				pos: p,
-				id: self.next_tree_id,
+				pos, id,
 			});
 
 			self.next_tree_id += 1;
-		}
 
-		pos_available
+			Some(id)
+		} else {
+			None
+		}
 	}
 
 	pub fn update(&mut self) {
@@ -57,7 +70,7 @@ impl World {
 
 		for t in &mut self.trees {
 			let p = t.pos;
-			let (x,y) = (p.0 as usize, p.1 as usize);
+			let (x,y) = (p.x as usize, p.y as usize);
 			let health = self.land_health[x + y*WORLD_DIMS.0];
 
 			let tick_rate = 100 + (200.0*health) as i32;
@@ -114,17 +127,17 @@ impl World {
 			for x in 0..WORLD_DIMS.0 {
 				let idx = x + y*WORLD_DIMS.0;
 
-				let pos = Pos(x as f32 + 0.5, y as f32 + 0.5);
+				let pos = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
 
 				let nearby_dead: f32 = self.trees.iter()
 					.filter(|&t| t.is_dead())
-					.map(|t| 1.0 - t.pos.dist_to(&pos) / DEATH_AFFECT_RANGE)
+					.map(|t| 1.0 - (t.pos-pos).length() / DEATH_AFFECT_RANGE)
 					.filter(|&d| d > 0.0)
 					.sum();
 
 				let nearby_growing: f32 = self.trees.iter()
 					.filter(|&t| t.is_growing())
-					.map(|t| t.get_consumption_rate() * (1.0 - t.pos.dist_to(&pos) / GROWTH_AFFECT_RANGE))
+					.map(|t| t.get_consumption_rate() * (1.0 - (t.pos-pos).length() / GROWTH_AFFECT_RANGE))
 					.filter(|&d| d > 0.0)
 					.sum();
 
@@ -142,14 +155,16 @@ impl World {
 			}
 		}
 
+		self.dead_trees.extend(self.trees.iter().filter(|x| x.is_dead()).map(|x| x.id));
+
 		self.trees.retain(|x| !x.is_dead());
 	}
 
-	pub fn get_diversity_at(&self, p: Pos, r: f32) -> f32 {
+	pub fn get_diversity_at(&self, p: Vec2, r: f32) -> f32 {
 		let q = 2.0;
 
 		let trees_in_range = self.trees.iter()
-			.map(|t| (t, t.pos.dist_to(&p)))
+			.map(|t| (t, (t.pos-p).length()))
 			.filter(|&(_, d)| d < r)
 			.collect::<Vec<_>>();
 

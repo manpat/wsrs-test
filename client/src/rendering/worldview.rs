@@ -68,7 +68,7 @@ impl WorldView {
 			vbo: bufs[0],
 			// ebo: bufs[1],
 
-			translation: Vec3::zero(),
+			translation: Vec3::new(-(MAP_SIZE as f32 - 1.0) * 2.0f32.sqrt() / 2.0 * 0.2, 0.0, 0.0),
 			trees: Vec::new(),
 		}
 	}
@@ -88,14 +88,11 @@ impl WorldView {
 		let scale = Vec3::new(1.0/vp.get_aspect(), 1.0, 1.0/10.0);
 		let trans = Vec3::new(0.0, 0.0, 3.0);
 
-		let center = (MAP_SIZE as f32 - 1.0) * 2.0f32.sqrt();
-		let world_trans = Vec3::new(-center, 0.0, 0.0);
-
 		let world_mat = Mat4::scale(scale)
 			* Mat4::uniform_scale(sc)
 			* Mat4::translate(trans)
 			* Mat4::xrot(-xrotph)
-			* Mat4::translate(world_trans + self.translation * Vec3::new(1.0/sc, 1.0, 1.0/(sc*xrotph.sin())))
+			* Mat4::translate(self.translation * Vec3::new(1.0/sc, 1.0, 1.0/(sc*xrotph.sin())))
 			* Mat4::yrot(-yrotph);
 
 		let normal_mat = Mat4::yrot(-yrotph);
@@ -155,9 +152,8 @@ impl WorldView {
 		let sc = 0.2;
 		let xrot = PI/6.0;
 		let normal_mat = Mat4::yrot(PI/4.0);
-		let center = Vec3::new((MAP_SIZE as f32 - 1.0) * 2.0f32.sqrt(), 0.0, 0.0);
 
-		normal_mat * ((Vec3::new(x, 0.0, y) - self.translation) * Vec3::new(1.0/sc, 1.0, 1.0/(sc*xrot.sin())) + center)
+		normal_mat * ((Vec3::new(x, 0.0, y) - self.translation) * Vec3::new(1.0/sc, 1.0, 1.0/(sc*xrot.sin())))
 	}
 
 	pub fn place_tree(&mut self, id: u32, p: Vec3) {

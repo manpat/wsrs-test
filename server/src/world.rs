@@ -9,6 +9,9 @@ const DEATH_AFFECT_RANGE: f32 = 1.0;
 const GROWTH_AFFECT_RANGE: f32 = 2.0;
 const TREE_RADIUS: f32 = 0.5;
 
+// const TICK_DURATION: u64 = 1500;
+const TICK_DURATION: u64 = 30_000;
+
 pub struct World {
 	pub trees: Vec<Tree>,
 	pub land: [f32; WORLD_DIMS.0 * WORLD_DIMS.1],
@@ -65,7 +68,7 @@ impl World {
 		let now = Instant::now();
 
 		let diff = now - self.last_tick;
-		if diff < Duration::from_millis(1500) { return }
+		if diff < Duration::from_millis(TICK_DURATION) { return }
 		self.last_tick = now;
 
 		for t in &mut self.trees {

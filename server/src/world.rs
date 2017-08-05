@@ -6,11 +6,14 @@ use common::math::*;
 const WORLD_DIMS: (usize,usize) = (28, 28);
 const DIVERSITY_RANGE: f32 = 1.3;
 const DEATH_AFFECT_RANGE: f32 = 1.0;
-const GROWTH_AFFECT_RANGE: f32 = 2.0;
-const TREE_RADIUS: f32 = 0.5;
+const GROWTH_AFFECT_RANGE: f32 = 1.0;
+const TREE_RADIUS: f32 = 0.3;
 
-// const TICK_DURATION: u64 = 1500;
-const TICK_DURATION: u64 = 30_000;
+#[cfg(not(hosted))]
+const TICK_DURATION: u64 = 1000;
+
+#[cfg(hosted)]
+const TICK_DURATION: u64 = 500_000;
 
 pub struct World {
 	pub trees: Vec<Tree>,
@@ -62,13 +65,13 @@ impl World {
 		}
 	}
 
-	pub fn update(&mut self) {
+	pub fn update(&mut self) -> bool {
 		use self::Maturity::*;
 
 		let now = Instant::now();
 
 		let diff = now - self.last_tick;
-		if diff < Duration::from_millis(TICK_DURATION) { return }
+		if diff < Duration::from_millis(TICK_DURATION) { return false }
 		self.last_tick = now;
 
 		for t in &mut self.trees {
@@ -76,7 +79,7 @@ impl World {
 			let (x,y) = (p.x as usize, p.y as usize);
 			let health = self.land_health[x + y*WORLD_DIMS.0];
 
-			let tick_rate = 100 + (200.0*health) as i32;
+			let tick_rate = 100 + (200.0*(1.0 - health)) as i32;
 
 			t.maturity = match t.maturity {
 				Dead => Dead,
@@ -147,7 +150,7 @@ impl World {
 				let local_diversity = self.get_diversity_at(pos, DIVERSITY_RANGE);
 
 				let mut c = self.land[idx];
-				c -= 0.5; // steady decay
+				c -= 0.1; // steady decay
 				c += local_diversity / 0.4;
 				c += nearby_dead * 50.0;
 				c -= nearby_growing * 0.75;
@@ -161,6 +164,8 @@ impl World {
 		self.dead_trees.extend(self.trees.iter().filter(|x| x.is_dead()).map(|x| x.id));
 
 		self.trees.retain(|x| !x.is_dead());
+
+		true
 	}
 
 	pub fn get_diversity_at(&self, p: Vec2, r: f32) -> f32 {

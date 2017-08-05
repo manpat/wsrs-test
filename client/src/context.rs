@@ -261,6 +261,11 @@ impl MainContext {
 					self.world_view.kill_tree(id);
 				}
 
+				Packet::HealthUpdate(health_state) => {
+					// println!("HealthUpdate {:?}", health_state);
+					self.world_view.update_health_state(health_state);
+				}
+
 				_ => {}
 			}
 		}

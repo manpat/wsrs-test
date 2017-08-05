@@ -29,9 +29,11 @@ enum NetworkMessage {
 	AuthSuccess(ConnectionID, u32),
 	AuthFail(ConnectionID),
 
-	WorldStateReady(ConnectionID, Vec<(u32, Vec2)>),
+	WorldStateReady(ConnectionID, Vec<(u32, Vec2)>, Vec<u8>),
 	PlaceTree(u32, Vec2),
 	KillTree(u32),
+
+	WorldTick(Vec<u8>),
 }
 
 // network thread -> sim thread
@@ -137,20 +139,18 @@ fn network_loop(rx: mpsc::Receiver<NetworkMessage>, tx: mpsc::Sender<SimulationM
 					packet_queue.push((Some(id), Packet::AuthFail));
 				}
 
-				NM::WorldStateReady(id, state) => {
+				NM::WorldStateReady(id, state, health_state) => {
+					packet_queue.push((Some(id), Packet::HealthUpdate(health_state)));
+
 					for (t_id, pos) in state {
 						// This is p' heavy - best not send hundreds of packets at once probably
 						packet_queue.push((Some(id), Packet::TreePlaced(t_id, pos.x, pos.y)));
 					}
 				}
 
-				NM::PlaceTree(tree_id, pos) => {
-					packet_queue.push((None, Packet::TreePlaced(tree_id, pos.x, pos.y)));
-				}
-
-				NM::KillTree(tree_id) => {
-					packet_queue.push((None, Packet::TreeDied(tree_id)));
-				}
+				NM::PlaceTree(tree_id, pos) => packet_queue.push((None, Packet::TreePlaced(tree_id, pos.x, pos.y))),
+				NM::KillTree(tree_id) => packet_queue.push((None, Packet::TreeDied(tree_id))),
+				NM::WorldTick(health_state) => packet_queue.push((None, Packet::HealthUpdate(health_state))),
 			}
 		}
 
@@ -212,6 +212,7 @@ fn sim_loop(tx: mpsc::Sender<NetworkMessage>, rx: mpsc::Receiver<SimulationMessa
 	use SimulationMessage as SM;
 
 	let mut world = World::new();
+	let mut health_state = Vec::new();
 
 	'main: loop {
 		while let Some(msg) = rx.try_recv().ok() {
@@ -239,12 +240,12 @@ fn sim_loop(tx: mpsc::Sender<NetworkMessage>, rx: mpsc::Receiver<SimulationMessa
 				}
 
 				SM::RequestWorldState(con_id) => {
-					let mut state = world.trees.iter()
+					let trees = world.trees.iter()
 						.filter(|t| !t.is_dead())
 						.map(|t| (t.id, t.pos))
 						.collect::<Vec<_>>();
 
-					tx.send(NM::WorldStateReady(con_id, state)).unwrap();
+					tx.send(NM::WorldStateReady(con_id, trees, health_state.clone())).unwrap();
 				}
 
 				SM::RequestPlaceTree(con_id, pos) => {
@@ -257,15 +258,19 @@ fn sim_loop(tx: mpsc::Sender<NetworkMessage>, rx: mpsc::Receiver<SimulationMessa
 			}
 		}
 
-		world.update();
+		if world.update() {
+			health_state = world.land_health.iter()
+				.map(|h| (h * 255.0) as u8)
+				.collect::<Vec<_>>();
+
+			tx.send(NM::WorldTick(health_state.clone())).unwrap();
+		}
 
 		for &t_id in &world.dead_trees {
 			tx.send(NM::KillTree(t_id)).unwrap();
 		}
 
 		world.dead_trees.clear();
-
-		// for e in world.events { tx.send(NetworkMessage::Blah) }
 
 		thread::sleep(time::Duration::from_millis(50));
 	}

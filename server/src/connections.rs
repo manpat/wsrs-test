@@ -159,8 +159,8 @@ impl ConnectionManager {
 		if let Some(ref mut con) = self.connections.iter_mut().find(|c| c.id == id) {
 			if !p.is_valid_from_server() { return false }
 
-			let mut payload = [0u8; 256];
-			let mut packet_buffer = [0u8; 512];
+			let mut payload = [0u8; 2048];
+			let mut packet_buffer = [0u8; 1024];
 			let len = p.write(&mut payload);
 
 			con.send_payload(&mut packet_buffer, &payload[..len]);
@@ -172,8 +172,8 @@ impl ConnectionManager {
 	}
 
 	pub fn broadcast_to_authed(&mut self, p: &Packet) {
-		let mut payload = [0u8; 256];
-		let mut packet_buffer = [0u8; 512];
+		let mut payload = [0u8; 2048];
+		let mut packet_buffer = [0u8; 1024];
 		let len = p.write(&mut payload);
 
 		for con in self.connections.iter_mut().filter(|c| c.is_ready()) {

@@ -18,6 +18,9 @@ pub enum Packet {
 
 	TreePlaced(u32, f32, f32),
 	TreeDied(u32),
+
+	HealthUpdate(Vec<u8>),
+	TreeUpdate(Vec<(u32, u8)>),
 }
 
 impl Packet {
@@ -38,6 +41,9 @@ impl Packet {
 
 			Packet::TreePlaced(..) => 0x90,
 			Packet::TreeDied(..) => 0x91,
+
+			Packet::HealthUpdate(..) => 0x92,
+			Packet::TreeUpdate(..) => 0x93,
 		}
 	}
 
@@ -66,6 +72,11 @@ impl Packet {
 			}
 
 			0x91 => Some(Packet::TreeDied(read_u32_from_slice(&src[1..]))),
+			0x92 => Some(Packet::HealthUpdate(src[1..].to_vec())),
+			0x93 => {
+				let v = src[1..].chunks(5).map(|c| (read_u32_from_slice(c), c[4])).collect();
+				Some(Packet::TreeUpdate(v))
+			},
 
 			_ => None
 		}
@@ -120,6 +131,22 @@ impl Packet {
 			Packet::TreeDied(id) => {
 				write_u32_to_slice(&mut dst[1..], id);
 				5
+			}
+
+			Packet::HealthUpdate(ref hs) => {
+				dst[1..1+hs.len()].copy_from_slice(&hs);
+				1 + hs.len()
+			}
+
+			Packet::TreeUpdate(ref ts) => {
+				for (i, &(tid, stage)) in ts.iter().enumerate() {
+					let base = 1 + i*5;
+
+					write_u32_to_slice(&mut dst[base..], tid);
+					dst[base + 4] = stage;
+				}
+
+				1 + ts.len() * 5
 			}
 		}
 	}

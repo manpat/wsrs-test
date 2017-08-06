@@ -47,6 +47,8 @@ pub struct WorldView {
 	shader: Shader,
 	terrain: TerrainView,
 
+	world_scale: f32,
+
 	tree_models: [TreeMesh; 4],
 	tree_starts: [i32; 4],
 	vbo: u32,
@@ -61,6 +63,9 @@ impl WorldView {
 	pub fn new() -> WorldView {
 		let mut bufs = [0u32; 2];
 		unsafe{ gl::GenBuffers(1, bufs.as_mut_ptr()); }
+
+		let world_scale = 1.0 / 6.0;
+		// let world_scale = 1.0 / (MAP_SIZE as f32 - 1.0) * 2.0f32.sqrt();
 
 		let mut view = WorldView {
 			shader: Shader::new(&WORLD_VERT_SRC, &WORLD_FRAG_SRC),
@@ -79,8 +84,10 @@ impl WorldView {
 			// ebo: bufs[1],
 
 			// Center the starting view
-			translation: Vec3::new(-(MAP_SIZE as f32 - 1.0) * 2.0f32.sqrt() * TILE_SIZE * 0.1, 0.0, 0.0),
+			translation: Vec3::new(-(MAP_SIZE as f32 - 1.0) * 2.0f32.sqrt() * TILE_SIZE * world_scale/2.0, 0.0, 0.0),
 			trees: Vec::new(),
+
+			world_scale,
 		};
 
 		view.build_tree_buffer();
@@ -97,7 +104,7 @@ impl WorldView {
 		let xrotph = PI/6.0;
 		let yrotph = PI/4.0;
 
-		let sc = 0.2;
+		let sc = self.world_scale;
 		let scale = Vec3::new(1.0/vp.get_aspect(), 1.0, 1.0/10.0);
 		let trans = Vec3::new(0.0, 0.0, 3.0);
 
@@ -178,7 +185,7 @@ impl WorldView {
 	pub fn convert_to_world_coords(&self, p: Vec2) -> Vec3 {
 		let Vec2{x,y} = p;
 
-		let sc = 0.2*TILE_SIZE;
+		let sc = self.world_scale*TILE_SIZE;
 		let xrot = PI/6.0;
 		let normal_mat = Mat4::yrot(PI/4.0);
 

@@ -44,7 +44,7 @@ fn main() {
 	} else {
 		// TODO: look into gethostname gethostbyname, or getifaddrs
 		// can be used to determine local ip
-		println!("cargo:rustc-env=PUBLIC_ADDRESS={}", "192.168.1.85");
+		println!("cargo:rustc-env=PUBLIC_ADDRESS={}", "192.168.1.167");
 	}
 
 	// println!("cargo:rustc-cfg=debug_requests");

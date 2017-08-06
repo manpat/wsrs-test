@@ -13,7 +13,6 @@ static TERRAIN_FRAG_SRC: &'static str = include_str!("../../assets/terrain.frag"
 static WORLD_VERT_SRC: &'static str = include_str!("../../assets/world.vert");
 static WORLD_FRAG_SRC: &'static str = include_str!("../../assets/world.frag");
 
-// static TEST_MODEL: &'static [u8] = include_bytes!("../../assets/forestconcept.3ds");
 static TREE_MODELS: [&'static [u8]; 4] = [
 	include_bytes!("../../assets/tree0.3ds"),
 	include_bytes!("../../assets/tree1.3ds"),
@@ -51,7 +50,7 @@ pub struct WorldView {
 
 	tree_models: [TreeMesh; 4],
 	tree_starts: [i32; 4],
-	vbo: u32,
+	tree_vbo: u32,
 
 	trees: Vec<(u32, Vec3, u8)>,
 	translation: Vec3,
@@ -61,9 +60,6 @@ static mut TIME: f32 = 0.0;
 
 impl WorldView {
 	pub fn new() -> WorldView {
-		let mut bufs = [0u32; 2];
-		unsafe{ gl::GenBuffers(1, bufs.as_mut_ptr()); }
-
 		let world_scale = 1.0 / 6.0;
 		// let world_scale = 1.0 / (MAP_SIZE as f32 - 1.0) * 2.0f32.sqrt();
 
@@ -80,8 +76,11 @@ impl WorldView {
 
 			tree_starts: [0i32; 4],
 
-			vbo: bufs[0],
-			// ebo: bufs[1],
+			tree_vbo: unsafe {
+				let mut vbo = 0u32;
+				gl::GenBuffers(1, &mut vbo);
+				vbo
+			},
 
 			// Center the starting view
 			translation: Vec3::new(-(MAP_SIZE as f32 - 1.0) * 2.0f32.sqrt() * TILE_SIZE * world_scale/2.0, 0.0, 0.0),
@@ -135,7 +134,7 @@ impl WorldView {
 
 			let vert_size = size_of::<TreeVertex>() as isize;
 
-			gl::BindBuffer(gl::ARRAY_BUFFER, self.vbo);
+			gl::BindBuffer(gl::ARRAY_BUFFER, self.tree_vbo);
 			gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(0));
 			gl::VertexAttribPointer(1, 3, gl::FLOAT, gl::FALSE, vert_size as i32, transmute(size_of::<Vec3>()));
 
@@ -167,7 +166,7 @@ impl WorldView {
 				verts.extend_from_slice(&tree.verts);
 			}
 
-			gl::BindBuffer(gl::ARRAY_BUFFER, self.vbo);
+			gl::BindBuffer(gl::ARRAY_BUFFER, self.tree_vbo);
 			gl::BufferData(gl::ARRAY_BUFFER, verts.len() as isize * vert_size,
 				transmute(verts.as_ptr()), gl::STREAM_DRAW);
 
@@ -319,11 +318,16 @@ impl TerrainView {
 
 		let mut data = Vec::with_capacity(MAP_MEM_SIZE*4);
 
-		for &h in self.health_state.iter() {
-			data.push(h as f32 / 255.0);
-			data.push(h as f32 / 255.0);
-			data.push(h as f32 / 255.0);
-			data.push(h as f32 / 255.0);
+		let s = 1.0/2.0;
+
+		for y in 0..MAP_SIZE {
+			for x in 0..MAP_SIZE {
+				let (x,y) = (x as f32, y as f32);
+				data.push(self.get_health_at(Vec2::new(x-s, y+s)));
+				data.push(self.get_health_at(Vec2::new(x-s, y-s)));
+				data.push(self.get_health_at(Vec2::new(x+s, y-s)));
+				data.push(self.get_health_at(Vec2::new(x+s, y+s)));
+			}
 		}
 
 		unsafe {

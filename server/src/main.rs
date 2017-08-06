@@ -211,7 +211,7 @@ fn sim_loop(tx: mpsc::Sender<NetworkMessage>, rx: mpsc::Receiver<SimulationMessa
 	use NetworkMessage as NM;
 	use SimulationMessage as SM;
 
-	let mut world = World::new();
+	let mut world = World::new_random();
 	let mut health_state = Vec::new();
 
 	'main: loop {

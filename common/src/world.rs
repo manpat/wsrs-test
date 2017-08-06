@@ -37,6 +37,13 @@ impl Tree {
 		}
 	}
 
+	pub fn is_mature(&self) -> bool {
+		match self.maturity {
+			Maturity::Adult(_) => true,
+			_ => false,
+		}
+	}
+
 	pub fn is_growing(&self) -> bool {
 		match self.maturity {
 			Maturity::Seed(_) => true,
@@ -62,7 +69,7 @@ impl Tree {
 		match self.maturity {
 			Seed(_) => 1.0,
 			Child(_) => 0.5,
-			Adult(_) => 0.1,
+			Adult(_) => -1.0,
 			Dead => 0.0,
 		}		
 	}

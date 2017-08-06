@@ -1,12 +1,14 @@
 pub use common::world::*;
 
+use rand;
+
 use std::time::{Instant, Duration};
 use common::math::*;
 
 const WORLD_DIMS: (usize,usize) = (28, 28);
 const DIVERSITY_RANGE: f32 = 1.3;
-const DEATH_AFFECT_RANGE: f32 = 1.0;
-const GROWTH_AFFECT_RANGE: f32 = 1.0;
+const DEATH_AFFECT_RANGE: f32 = 2.5;
+const GROWTH_AFFECT_RANGE: f32 = 2.3;
 const TREE_RADIUS: f32 = 0.3;
 
 #[cfg(not(hosted))]
@@ -40,6 +42,21 @@ impl World {
 		}
 	}
 
+	pub fn new_random() -> Self {
+		let mut world = World::new();
+
+		for i in 0..40 {
+			let idx = rand::random::<usize>() % world.land.len();
+			world.land[idx] = 30.0;
+		}
+
+		for i in 0..10 {
+			world.tick();
+		}
+
+		world
+	}
+
 	pub fn place_tree(&mut self, s: Species, pos: Vec2) -> Option<u32> {
 		let (x,y) = (pos.x as usize, pos.y as usize);
 
@@ -66,13 +83,19 @@ impl World {
 	}
 
 	pub fn update(&mut self) -> bool {
-		use self::Maturity::*;
-
 		let now = Instant::now();
 
 		let diff = now - self.last_tick;
 		if diff < Duration::from_millis(TICK_DURATION) { return false }
 		self.last_tick = now;
+
+		self.tick();
+
+		true
+	}
+
+	fn tick(&mut self) {
+		use self::Maturity::*;
 
 		for t in &mut self.trees {
 			let p = t.pos;
@@ -147,13 +170,19 @@ impl World {
 					.filter(|&d| d > 0.0)
 					.sum();
 
+				let nearby_mature: f32 = self.trees.iter()
+					.filter(|&t| t.is_mature())
+					.map(|t| (1.0 - (t.pos-pos).length() / GROWTH_AFFECT_RANGE).max(0.0))
+					.sum();
+
 				let local_diversity = self.get_diversity_at(pos, DIVERSITY_RANGE);
 
 				let mut c = self.land[idx];
-				c -= 0.1; // steady decay
+				c -= 0.03 + ((c-15.0)/5.0).max(0.0); // decay
 				c += local_diversity / 0.4;
-				c += nearby_dead * 50.0;
-				c -= nearby_growing * 0.75;
+				c += nearby_dead * 3.0;
+				c -= nearby_growing * 0.2;
+				c += nearby_mature * 0.2;
 				c = c.max(0.0);
 
 				self.land[idx] = c;
@@ -164,8 +193,6 @@ impl World {
 		self.dead_trees.extend(self.trees.iter().filter(|x| x.is_dead()).map(|x| x.id));
 
 		self.trees.retain(|x| !x.is_dead());
-
-		true
 	}
 
 	pub fn get_diversity_at(&self, p: Vec2, r: f32) -> f32 {

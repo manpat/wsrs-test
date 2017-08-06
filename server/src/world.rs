@@ -45,12 +45,12 @@ impl World {
 	pub fn new_random() -> Self {
 		let mut world = World::new();
 
-		for i in 0..40 {
+		for _ in 0..20 {
 			let idx = rand::random::<usize>() % world.land.len();
-			world.land[idx] = 30.0;
+			world.land[idx] = 50.0;
 		}
 
-		for i in 0..10 {
+		for _ in 0..10 {
 			world.tick();
 		}
 

@@ -45,9 +45,9 @@ impl World {
 	pub fn new_random() -> Self {
 		let mut world = World::new();
 
-		for _ in 0..20 {
+		for _ in 0..10 {
 			let idx = rand::random::<usize>() % world.land.len();
-			world.land[idx] = 50.0;
+			world.land[idx] = 100.0;
 		}
 
 		for _ in 0..10 {
@@ -123,28 +123,29 @@ impl World {
 
 		for y in 0..wh {
 			for x in 0..ww {
-				let sample = |x, y| {
-					if x < 0 || y < 0 { return None }
-					if x >= ww || y >= wh { return None }
+				let sample = |x: i32, y: i32| {
+					// Clamp to edge
+					let x = x.max(0).min(ww-1);
+					let y = y.max(0).min(wh-1);
 
 					let idx = x + y*ww;
-					Some(self.land[idx as usize])
+					self.land[idx as usize]
 				};
 
-				let c: f32 = sample(x, y).unwrap();
+				let c: f32 = sample(x, y);
 				let o: f32 = [
 					sample(x+1, y),
 					sample(x, y+1),
 					sample(x-1, y),
 					sample(x, y-1),
-				].iter().map(|x| x.unwrap_or(0.0)).sum();
+				].iter().sum();
 
 				let d: f32 = [
 					sample(x+1, y+1),
 					sample(x+1, y-1),
 					sample(x-1, y+1),
 					sample(x-1, y-1),
-				].iter().map(|x| x.unwrap_or(0.0)).sum();
+				].iter().sum();
 
 				blur_buf[(x + y*ww) as usize] = c * 0.3 + o * 0.15 + d * 0.025;
 			}
@@ -178,8 +179,8 @@ impl World {
 				let local_diversity = self.get_diversity_at(pos, DIVERSITY_RANGE);
 
 				let mut c = self.land[idx];
-				c -= 0.03 + ((c-15.0)/5.0).max(0.0); // decay
-				c += local_diversity / 0.4;
+				c -= 0.03 + ((c-15.0)/3.0).max(0.0); // decay
+				c += local_diversity / 0.6;
 				c += nearby_dead * 3.0;
 				c -= nearby_growing * 0.2;
 				c += nearby_mature * 0.2;

@@ -56,8 +56,9 @@ impl Tree {
 		use self::Maturity::*;
 
 		match self.maturity {
-			Seed(_) => 0.5,
-			Child(_) => 0.75,
+			Seed(_) => 0.25,
+			Child(_) => 0.5,
+			Adult(x) if x < 25 => 0.6,
 			Adult(_) => 1.0,
 			Dead => 0.0,
 		}
@@ -68,7 +69,8 @@ impl Tree {
 
 		match self.maturity {
 			Seed(_) => 1.0,
-			Child(_) => 0.5,
+			Child(_) => 0.8,
+			Adult(x) if x < 25 => 0.4,
 			Adult(_) => -1.0,
 			Dead => 0.0,
 		}		

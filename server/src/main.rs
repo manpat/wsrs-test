@@ -1,3 +1,5 @@
+#![feature(ord_max_min)]
+
 mod connections;
 mod fileserver;
 mod http;

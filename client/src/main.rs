@@ -16,8 +16,6 @@ mod connection;
 
 mod ui;
 
-mod worldstate;
-
 use context::*;
 
 fn main() {

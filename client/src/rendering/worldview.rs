@@ -33,7 +33,6 @@ struct TreeVertex {
 
 struct TreeMesh {
 	verts: Vec<TreeVertex>,
-	// elems: Vec<u16>,
 
 	trunk_start: i32,
 	trunk_count: i32,
@@ -146,11 +145,22 @@ impl WorldView {
 				let health = self.terrain.get_health_at(Vec2::new(p.x, p.z));
 				let tree_idx = tree_idx as usize;
 
-				self.shader.set_uniform_vec3("color", &trunk_color.to_vec3());
-				gl::DrawArrays(gl::TRIANGLES, self.tree_starts[tree_idx] + self.tree_models[tree_idx].trunk_start as i32 * 3, self.tree_models[tree_idx].trunk_count as i32 * 3);
+				let trunk_count = self.tree_models[tree_idx].trunk_count;
+				let leafage_count = self.tree_models[tree_idx].leafage_count;
 
-				self.shader.set_uniform_vec3("color", &WorldView::get_tree_color(health).to_vec3());
-				gl::DrawArrays(gl::TRIANGLES, self.tree_starts[tree_idx] + self.tree_models[tree_idx].leafage_start as i32 * 3, self.tree_models[tree_idx].leafage_count as i32 * 3);
+				let base_start = self.tree_starts[tree_idx];
+				let trunk_start = self.tree_models[tree_idx].trunk_start;
+				let leafage_start = self.tree_models[tree_idx].leafage_start;
+
+				if trunk_count > 0 {
+					self.shader.set_uniform_vec3("color", &trunk_color.to_vec3());
+					gl::DrawArrays(gl::TRIANGLES, base_start + trunk_start as i32 * 3, trunk_count as i32 * 3);
+				}
+
+				if leafage_count > 0 {
+					self.shader.set_uniform_vec3("color", &WorldView::get_tree_color(health).to_vec3());
+					gl::DrawArrays(gl::TRIANGLES, base_start + leafage_start as i32 * 3, leafage_count as i32 * 3);
+				}
 			}
 		}
 	}
@@ -192,8 +202,7 @@ impl WorldView {
 	}
 
 	pub fn place_tree(&mut self, id: u32, p: Vec3) {
-		// self.trees.push((id, p, 0));
-		self.trees.push((id, p, (id * 7) as u8%3 + 1)); // TODO: NO
+		self.trees.push((id, p, 0));
 	}
 
 	pub fn set_tree_stage(&mut self, id: u32, stage: u8) {
@@ -227,6 +236,12 @@ impl WorldView {
 
 	pub fn update_health_state(&mut self, hs: Vec<u8>) {
 		self.terrain.update_health_state(hs);
+	}
+
+	pub fn update_tree_maturities(&mut self, ts: Vec<(u32, u8)>) {
+		for (id, stage) in ts {
+			self.set_tree_stage(id, stage);
+		}
 	}
 }
 
@@ -271,6 +286,7 @@ impl TerrainView {
 		};
 
 		view.build_main_buffers();
+		view.build_health_vbo();
 		view
 	}
 
@@ -337,8 +353,6 @@ impl TerrainView {
 	}
 
 	fn render(&mut self, world_mat: &Mat4) {
-		self.build_health_vbo();
-
 		self.shader.use_program();
 		self.shader.set_view(&world_mat);
 		self.shader.set_uniform_mat("normal_xform", &Mat4::yrot(-PI/4.0));
@@ -369,6 +383,7 @@ impl TerrainView {
 	fn update_health_state(&mut self, hs: Vec<u8>) {
 		if hs.len() != MAP_MEM_SIZE { return }
 		self.health_state = hs;
+		self.build_health_vbo();
 	}
 }
 

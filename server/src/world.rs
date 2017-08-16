@@ -15,7 +15,7 @@ const TREE_RADIUS: f32 = 0.3;
 const TICK_DURATION: u64 = 1000;
 
 #[cfg(hosted)]
-const TICK_DURATION: u64 = 500_000;
+const TICK_DURATION: u64 = 750_000;
 
 pub struct World {
 	pub trees: Vec<Tree>,

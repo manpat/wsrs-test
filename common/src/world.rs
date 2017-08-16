@@ -16,7 +16,7 @@ pub enum Maturity {
 	Seed(i32),
 	// [0, 1000) - affected by tick rate
 	Child(i32),
-	// [0, 10)
+	// [0, 50)
 	Adult(i32),
 	Dead,
 }
@@ -71,6 +71,18 @@ impl Tree {
 			Child(_) => 0.5,
 			Adult(_) => -1.0,
 			Dead => 0.0,
+		}		
+	}
+
+	pub fn get_maturity_stage(&self) -> u8 {
+		use self::Maturity::*;
+
+		match self.maturity {
+			Seed(_) => 0,
+			Child(_) => 1,
+			Adult(x) if x < 25 => 2,
+			Adult(_) => 3,
+			Dead => 4,
 		}		
 	}
 }

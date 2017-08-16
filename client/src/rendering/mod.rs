@@ -42,7 +42,26 @@ impl RenderingContext {
 		let s = CString::new(canvas_id).unwrap();
 		let ems_context_handle = unsafe{ ems::emscripten_webgl_create_context(s.as_ptr(), &attribs) };
 
-		assert!(ems_context_handle > 0, "WebGL context creation failed for {} ({})", canvas_id, ems_context_handle);
+		match ems_context_handle {
+			ems::RESULT_NOT_SUPPORTED => {
+				panic!("WebGL not supported");
+			}
+
+			ems::RESULT_FAILED_NOT_DEFERRED => {
+				panic!("WebGL context creation failed for '{}' (FAILED_NOT_DEFERRED)", canvas_id);
+			}
+
+			ems::RESULT_FAILED => {
+				panic!("WebGL context creation failed for '{}' (FAILED)", canvas_id);
+			}
+
+			x if x < 0 => {
+				panic!("WebGL context creation failed for '{}' ({})", canvas_id, x);
+			}
+
+			_ => {}
+		}
+
 
 		let mut ctx = RenderingContext {
 			ems_context_handle,
@@ -62,7 +81,7 @@ impl RenderingContext {
 	}
 
 	pub fn make_current(&mut self) -> bool {
-		unsafe { ems::emscripten_webgl_make_context_current(self.ems_context_handle) == 0 }
+		unsafe { ems::emscripten_webgl_make_context_current(self.ems_context_handle) == ems::RESULT_SUCCESS }
 	}
 
 	pub fn is_current(&self) -> bool {

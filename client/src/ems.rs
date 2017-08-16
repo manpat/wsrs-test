@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use context::MainContext;
 use std::mem::transmute;
 use std::ffi::CString;
@@ -47,13 +49,24 @@ pub struct EmscriptenWebGLContextAttributes {
 	pub enable_extensions_by_default: i32,
 }
 
+pub const RESULT_SUCCESS: i32             =  0;
+pub const RESULT_DEFERRED: i32            =  1;
+pub const RESULT_NOT_SUPPORTED: i32       = -1;
+pub const RESULT_FAILED_NOT_DEFERRED: i32 = -2;
+pub const RESULT_INVALID_TARGET: i32      = -3;
+pub const RESULT_UNKNOWN_TARGET: i32      = -4;
+pub const RESULT_INVALID_PARAM: i32       = -5;
+pub const RESULT_FAILED: i32              = -6;
+pub const RESULT_NO_DATA: i32             = -7;
+pub const RESULT_TIMED_OUT: i32           = -8;
+
 pub type EmWebGLContext = i32;
 pub type EmSocketCallback = extern fn(fd: i32, ud: *mut u8);
 type EmMouseCallback = extern fn(etype: i32, evt: *const EmscriptenMouseEvent, ud: *mut u8) -> i32;
 type EmTouchCallback = extern fn(etype: i32, evt: *const EmscriptenTouchEvent, ud: *mut u8) -> i32;
 type EmArgCallback = extern fn(ud: *mut u8);
 
-#[allow(dead_code, improper_ctypes)]
+#[allow(improper_ctypes)]
 extern {
 	fn emscripten_set_main_loop_arg(func: extern fn(arg: *mut u8), arg: *mut u8, fps: i32, simulate_infinite_loop: i32);
 	fn emscripten_exit_with_live_runtime();

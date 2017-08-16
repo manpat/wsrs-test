@@ -1,5 +1,5 @@
 use std::time;
-use rendering::{RenderingContext, Shader};
+use rendering::RenderingContext;
 use rendering::uibuilder::UIBuilder;
 use rendering::worldview::WorldView;
 use connection::Connection;
@@ -74,6 +74,9 @@ impl MainContext {
 
 		if let Some(token) = self.auth_token {
 			self.connection.send(&Packet::AttemptAuthSession(token));
+		} else {
+			// TODO: Not this
+			self.connection.send(&Packet::AttemptAuthSession(123));
 		}
 	}
 	
@@ -264,6 +267,10 @@ impl MainContext {
 				Packet::HealthUpdate(health_state) => {
 					// println!("HealthUpdate {:?}", health_state);
 					self.world_view.update_health_state(health_state);
+				}
+
+				Packet::TreeUpdate(tree_maturities) => {
+					self.world_view.update_tree_maturities(tree_maturities);
 				}
 
 				_ => {}

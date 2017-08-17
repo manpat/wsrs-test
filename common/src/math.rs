@@ -2,6 +2,8 @@ use easing::*;
 
 use std::ops::{Add, Sub, Mul, Div};
 
+pub use std::f32::consts::PI;
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 pub struct Vec2{pub x: f32, pub y: f32}
@@ -23,7 +25,8 @@ pub struct Mat4{pub rows: [Vec4; 4]}
 
 impl Vec2 {
 	pub fn new(x: f32, y: f32) -> Vec2 { Vec2{x, y} }
-	pub fn zero() -> Vec2 { Vec2::new(0.0, 0.0) }
+	pub fn splat(x: f32) -> Vec2 { Vec2::new(x, x) }
+	pub fn zero() -> Vec2 { Vec2::splat(0.0) }
 	pub fn from_angle(th: f32) -> Vec2 { Vec2::new(th.cos(), th.sin()) }
 
 	pub fn to_tuple(self) -> (f32,f32) { (self.x, self.y) }
@@ -31,11 +34,15 @@ impl Vec2 {
 	pub fn length(self) -> f32 {
 		(self.x*self.x + self.y*self.y).sqrt()
 	}
+	
+	pub fn normalize(&self) -> Vec2 { *self * (1.0/self.length()) }
+	pub fn dot(&self, o: Vec2) -> f32 { self.x*o.x + self.y*o.y }
 }
 
 impl Vec3 {
 	pub fn new(x: f32, y: f32, z: f32) -> Vec3 { Vec3{x, y, z} }
-	pub fn zero() -> Vec3 { Vec3::new(0.0, 0.0, 0.0) }
+	pub fn splat(x: f32) -> Vec3 { Vec3::new(x, x, x) }
+	pub fn zero() -> Vec3 { Vec3::splat(0.0) }
 
 	pub fn to_tuple(&self) -> (f32,f32,f32) { (self.x, self.y, self.z) }
 	pub fn extend(&self, w: f32) -> Vec4 { Vec4::new(self.x, self.y, self.z, w) }
@@ -55,7 +62,8 @@ impl Vec3 {
 
 impl Vec4 {
 	pub fn new(x: f32, y: f32, z: f32, w: f32) -> Vec4 { Vec4{x, y, z, w} }
-	pub fn zero() -> Vec4 { Vec4::new(0.0, 0.0, 0.0, 0.0) }
+	pub fn splat(x: f32) -> Vec4 { Vec4::new(x, x, x, x) }
+	pub fn zero() -> Vec4 { Vec4::splat(0.0) }
 	pub fn from_slice(o: &[f32]) -> Vec4 {
 		assert!(o.len() >= 4);
 		Vec4::new(o[0], o[1], o[2], o[3])
@@ -71,7 +79,8 @@ impl Vec4 {
 
 impl Vec2i {
 	pub fn new(x: i32, y: i32) -> Vec2i { Vec2i{x, y} }
-	pub fn zero() -> Vec2i { Vec2i::new(0, 0) }
+	pub fn splat(x: i32) -> Vec2i { Vec2i::new(x, x) }
+	pub fn zero() -> Vec2i { Vec2i::splat(0) }
 
 	pub fn to_tuple(self) -> (i32,i32) { (self.x, self.y) }
 	pub fn to_vec2(self) -> Vec2 { Vec2::new(self.x as f32, self.y as f32) }
@@ -160,6 +169,13 @@ impl Sub for Vec2 {
 	type Output = Vec2;
 	fn sub(self, o: Vec2) -> Vec2 {
 		Vec2::new(self.x - o.x, self.y - o.y)
+	}
+}
+
+impl Mul<Vec2> for Vec2 {
+	type Output = Vec2;
+	fn mul(self, o: Vec2) -> Vec2 {
+		Vec2::new(self.x * o.x, self.y * o.y)
 	}
 }
 

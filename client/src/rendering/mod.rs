@@ -17,6 +17,7 @@ pub mod texture;
 
 pub mod uibuilder;
 pub mod worldview;
+mod boidview;
 
 mod parser_3ds;
 

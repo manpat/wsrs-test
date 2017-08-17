@@ -16,6 +16,8 @@ mod connection;
 
 mod ui;
 
+mod boids;
+
 use context::*;
 
 fn main() {

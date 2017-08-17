@@ -8,6 +8,11 @@ use rendering::texture::*;
 use std::f32::consts::PI;
 use std::mem::{transmute, size_of, size_of_val};
 
+use boids::BoidSystem;
+use rendering::boidview::BoidView;
+
+use rand;
+
 static TERRAIN_VERT_SRC: &'static str = include_str!("../../assets/terrain.vert");
 static TERRAIN_FRAG_SRC: &'static str = include_str!("../../assets/terrain.frag");
 static WORLD_VERT_SRC: &'static str = include_str!("../../assets/world.vert");
@@ -44,6 +49,8 @@ struct TreeMesh {
 pub struct WorldView {
 	shader: Shader,
 	terrain: TerrainView,
+	boidview: BoidView,
+	boids: BoidSystem,
 
 	world_scale: f32,
 
@@ -65,6 +72,9 @@ impl WorldView {
 		let mut view = WorldView {
 			shader: Shader::new(&WORLD_VERT_SRC, &WORLD_FRAG_SRC),
 			terrain: TerrainView::new(),
+
+			boids: BoidSystem::new(Vec2::splat(MAP_SIZE as f32 * TILE_SIZE)),
+			boidview: BoidView::new(),
 
 			tree_models: [
 				process_tree_mesh(parse_3ds(&TREE_MODELS[0]).unwrap()),
@@ -93,7 +103,10 @@ impl WorldView {
 		view
 	}
 
-	pub fn update(&mut self, _dt: f32) {}
+	pub fn update(&mut self, dt: f32) {
+		self.boids.update(dt);
+		self.boidview.update(&self.boids);
+	}
 
 	pub fn render(&mut self, vp: &Viewport) {
 		unsafe{ TIME += 0.016; }
@@ -162,6 +175,10 @@ impl WorldView {
 					gl::DrawArrays(gl::TRIANGLES, base_start + leafage_start as i32 * 3, leafage_count as i32 * 3);
 				}
 			}
+
+			gl::DisableVertexAttribArray(1);
+
+			self.boidview.render(&world_mat);
 		}
 	}
 
@@ -178,7 +195,7 @@ impl WorldView {
 
 			gl::BindBuffer(gl::ARRAY_BUFFER, self.tree_vbo);
 			gl::BufferData(gl::ARRAY_BUFFER, verts.len() as isize * vert_size,
-				transmute(verts.as_ptr()), gl::STREAM_DRAW);
+				transmute(verts.as_ptr()), gl::STATIC_DRAW);
 
 			gl::BindBuffer(gl::ARRAY_BUFFER, 0);
 		}

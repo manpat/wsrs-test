@@ -25,10 +25,10 @@ static TREE_MODELS: [&'static [u8]; 4] = [
 	include_bytes!("../../assets/tree3.3ds"),
 ];
 
-const MAP_SIZE: u32 = 28;
+pub const MAP_SIZE: u32 = 28;
 const MAP_MEM_SIZE: usize = (MAP_SIZE*MAP_SIZE) as usize;
 
-const TILE_SIZE: f32 = 2.0;
+pub const TILE_SIZE: f32 = 2.0;
 
 #[derive(Debug, Clone, Copy)]
 struct TreeVertex {
@@ -66,7 +66,6 @@ static mut TIME: f32 = 0.0;
 
 impl WorldView {
 	pub fn new() -> WorldView {
-		// let world_scale = 1.0 / 6.0;
 		let world_scale = 1.0 / 7.0;
 		// let world_scale = 1.0 / (MAP_SIZE as f32 - 1.0) * 2.0f32.sqrt();
 
@@ -253,6 +252,7 @@ impl WorldView {
 	}
 
 	pub fn update_health_state(&mut self, hs: Vec<u8>) {
+		self.boids.update_health_state(&hs);
 		self.terrain.update_health_state(hs);
 	}
 

@@ -3,6 +3,8 @@ use common::easing::*;
 
 use rand::{random, Open01, Closed01};
 
+use rendering::worldview::{MAP_SIZE, TILE_SIZE}; // UUUUGGHHHHH
+
 #[derive(Clone)]
 pub struct Boid {
 	pub pos: Vec2,
@@ -16,6 +18,7 @@ pub struct Boid {
 
 pub struct BoidSystem {
 	boids: Vec<Boid>,
+	health_gradient: Vec<Vec2>,
 	world_bounds: Vec2,
 }
 
@@ -47,8 +50,11 @@ impl BoidSystem {
 			});
 		}
 
+		let health_gradient = vec![Vec2::zero(); (MAP_SIZE * MAP_SIZE) as usize];
+
 		BoidSystem {
 			boids,
+			health_gradient,
 			world_bounds,
 		}
 	}
@@ -95,9 +101,17 @@ impl BoidSystem {
 					.map(|ob| ob.vel.normalize())
 					.fold(Vec2::zero(), |acc, d| acc + d) / count;
 
-				cohesion + separation * 0.3 + average_heading * 0.4
+				cohesion + separation * 0.1 + average_heading * 0.4
 			} else {
 				Vec2::zero()
+			};
+
+			let health_gradient = {
+				let tile_pos = boid.pos / TILE_SIZE;
+				let x = (tile_pos.x.max(0.0) as usize).min(MAP_SIZE as usize - 1);
+				let y = (tile_pos.y.max(0.0) as usize).min(MAP_SIZE as usize - 1);
+
+				self.health_gradient[x + y * MAP_SIZE as usize]
 			};
 
 			let edge_avoid_margin = 5.0;
@@ -114,7 +128,7 @@ impl BoidSystem {
 			boid.heading += random_heading_delta * PI * dt * 2.0;
 			let heading = Vec2::from_angle(boid.heading);
 
-			let acc = flocking_acc + edge_avoid * 3.0 + heading * 2.0;
+			let acc = flocking_acc + edge_avoid * 3.0 + heading * 2.0 + health_gradient * 2.0;
 
 			if acc.length() > 0.01 {
 				boid.vel = dt.ease_linear(boid.vel, acc.normalize(), 1.0);
@@ -124,6 +138,35 @@ impl BoidSystem {
 			boid.pos = boid.pos + boid.vel * dt;
 
 			boid.phase += dt * boid.rate;
+		}
+	}
+
+	pub fn update_health_state(&mut self, hs: &Vec<u8>) {
+		if hs.len() != self.health_gradient.len() { return }
+
+		let map_size = MAP_SIZE as i32;
+
+		let sample = |x: i32, y: i32| {
+			// Clamp to edge
+			let x = x.max(0).min(map_size - 1);
+			let y = y.max(0).min(map_size - 1);
+
+			let idx = x + y*map_size;
+			hs[idx as usize] as f32 / 255.0
+		};
+
+		for y in 0..map_size {
+			for x in 0..map_size {
+				let center = sample(x, y);
+				let gradient = Vec2::new(-1.0, 0.0) * (sample(x-1, y) - center)
+					+ Vec2::new( 1.0, 0.0) * (sample(x+1, y) - center)
+					+ Vec2::new( 0.0,-1.0) * (sample(x, y-1) - center)
+					+ Vec2::new( 0.0, 1.0) * (sample(x, y+1) - center);
+
+				// TODO: Diagonals?
+
+				self.health_gradient[(x + y * map_size) as usize] = gradient;
+			}
 		}
 	}
 

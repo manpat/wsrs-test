@@ -191,6 +191,13 @@ impl Div<Vec2> for Vec2 {
 	}
 }
 
+impl Div<f32> for Vec2 {
+	type Output = Vec2;
+	fn div(self, o: f32) -> Vec2 {
+		Vec2::new(self.x / o, self.y / o)
+	}
+}
+
 impl Add for Vec3 {
 	type Output = Vec3;
 	fn add(self, o: Vec3) -> Vec3 {

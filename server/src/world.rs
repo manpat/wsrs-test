@@ -12,8 +12,7 @@ const GROWTH_AFFECT_RANGE: f32 = 2.3;
 const TREE_RADIUS: f32 = 0.3;
 
 #[cfg(not(hosted))]
-const TICK_DURATION: u64 = 10_000;
-// const TICK_DURATION: u64 = 1000;
+const TICK_DURATION: u64 = 2000;
 
 #[cfg(hosted)]
 const TICK_DURATION: u64 = 750_000;
@@ -124,6 +123,9 @@ impl World {
 
 		for y in 0..wh {
 			for x in 0..ww {
+				// NOTE: THis is still bleeding at the edges for some reason,
+				// 	it also seems to be biased to the left for some reason
+				// TODO: Fix obvs
 				let sample = |x: i32, y: i32| {
 					// Clamp to edge
 					let x = x.max(0).min(ww-1);

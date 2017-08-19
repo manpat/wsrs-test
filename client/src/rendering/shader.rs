@@ -108,6 +108,13 @@ impl Shader {
 		}		
 	}
 
+	pub fn set_uniform_f32(&self, uniform: &str, v: f32) {
+		unsafe {
+			// TODO: Make sure we're bound
+			gl::Uniform1f(self.get_uniform_loc(&uniform), v);
+		}
+	}
+
 	pub fn set_proj(&self, mat: &Mat4) {
 		self.set_uniform_mat_raw(self.proj_loc, &mat);
 	}

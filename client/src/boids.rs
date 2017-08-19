@@ -55,19 +55,21 @@ impl BoidSystem {
 
 	pub fn update(&mut self, dt: f32) {
 		let prev_boids = self.boids.clone();
-		let range = 8.0;
+		let range = 4.0;
 		let a_range = PI*2.0/4.0;
 
-		for b in self.boids.iter_mut() {
+		for boid in self.boids.iter_mut() {
+			let boid_dir = boid.vel.normalize();
+
 			let in_range: Vec<&Boid> = prev_boids.iter()
 				.filter(|&ob| {
-					if ob.id == b.id { return false }
+					if ob.id == boid.id { return false }
 
-					let diff = ob.pos - b.pos;
-					let ang = diff.normalize().dot(b.vel.normalize()).acos();
+					let diff = ob.pos - boid.pos;
+					let diff_len = diff.length();
 
-					diff.length() < range
-						&& ang < a_range
+					diff_len < range
+						&& (diff.dot(boid_dir)/diff_len).acos() < a_range
 				})
 				.collect();
 
@@ -78,50 +80,50 @@ impl BoidSystem {
 				let centre: Vec2 = in_range.iter()
 					.fold(Vec2::zero(), |a, b| a + b.pos) / count;
 
-				let cohesion = centre - b.pos;
+				let cohesion = centre - boid.pos;
 
-				let separation: Vec2 = in_range.iter()
-					.map(|ob| b.pos - ob.pos)
-					.fold(Vec2::zero(), |acc, d| acc + d)
-					.normalize();
+				let separation = in_range.iter()
+					.fold(Vec2::zero(), |a, ob| {
+						let diff = ob.pos - boid.pos;
+						let dist = diff.length();
+						let separation_amount = (1.0 - dist).max(0.0);
 
-				let separation = Vec2::new(
-					separation.x.powf(2.0),
-					separation.y.powf(2.0));
+						a - diff.normalize() * separation_amount
+					});
 
 				let average_heading: Vec2 = in_range.iter()
 					.map(|ob| ob.vel.normalize())
 					.fold(Vec2::zero(), |acc, d| acc + d) / count;
 
-				cohesion + separation * 0.0 + average_heading * 0.4
+				cohesion + separation * 0.3 + average_heading * 0.4
 			} else {
 				Vec2::zero()
 			};
 
-			let margin = 5.0;
+			let edge_avoid_margin = 5.0;
 
-			let diff_to_center = self.world_bounds*0.5 - b.pos;
+			let diff_to_center = self.world_bounds*0.5 - boid.pos;
 			let abs_dtc = Vec2::new(diff_to_center.x.abs(), diff_to_center.y.abs());
-			let dist_to_edge = abs_dtc - (self.world_bounds*0.5 - Vec2::splat(margin * 2.0));
+			let dist_to_edge = abs_dtc - (self.world_bounds*0.5 - Vec2::splat(edge_avoid_margin * 2.0));
 			let clamped_dist = Vec2::new(dist_to_edge.x.max(0.0), dist_to_edge.y.max(0.0));
-			let edge_avoid = diff_to_center.normalize() * clamped_dist * (1.0 / margin);
+			let edge_avoid = diff_to_center.normalize() * clamped_dist * (1.0 / edge_avoid_margin);
 
 			let Open01(random_heading_delta) = random::<Open01<f32>>();
 			let random_heading_delta = random_heading_delta * 2.0 - 1.0;
 
-			b.heading += random_heading_delta * PI * dt * 2.0;
-			let heading = Vec2::from_angle(b.heading);
+			boid.heading += random_heading_delta * PI * dt * 2.0;
+			let heading = Vec2::from_angle(boid.heading);
 
 			let acc = flocking_acc + edge_avoid * 3.0 + heading * 2.0;
 
 			if acc.length() > 0.01 {
-				b.vel = dt.ease_linear(b.vel, acc.normalize(), 1.0);
+				boid.vel = dt.ease_linear(boid.vel, acc.normalize(), 1.0);
 			}
 
-			b.vel = b.vel.normalize();
-			b.pos = b.pos + b.vel * dt;
+			boid.vel = boid.vel.normalize() * 0.75;
+			boid.pos = boid.pos + boid.vel * dt;
 
-			b.phase += dt * b.rate;
+			boid.phase += dt * boid.rate;
 		}
 	}
 

@@ -66,7 +66,8 @@ static mut TIME: f32 = 0.0;
 
 impl WorldView {
 	pub fn new() -> WorldView {
-		let world_scale = 1.0 / 6.0;
+		// let world_scale = 1.0 / 6.0;
+		let world_scale = 1.0 / 7.0;
 		// let world_scale = 1.0 / (MAP_SIZE as f32 - 1.0) * 2.0f32.sqrt();
 
 		let mut view = WorldView {
@@ -178,7 +179,7 @@ impl WorldView {
 
 			gl::DisableVertexAttribArray(1);
 
-			self.boidview.render(&world_mat);
+			self.boidview.render(&world_mat, vp.size.y as f32 / 967.0);
 		}
 	}
 

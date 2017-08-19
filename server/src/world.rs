@@ -12,7 +12,8 @@ const GROWTH_AFFECT_RANGE: f32 = 2.3;
 const TREE_RADIUS: f32 = 0.3;
 
 #[cfg(not(hosted))]
-const TICK_DURATION: u64 = 1000;
+const TICK_DURATION: u64 = 10_000;
+// const TICK_DURATION: u64 = 1000;
 
 #[cfg(hosted)]
 const TICK_DURATION: u64 = 750_000;

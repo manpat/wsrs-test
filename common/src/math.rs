@@ -31,9 +31,7 @@ impl Vec2 {
 
 	pub fn to_tuple(self) -> (f32,f32) { (self.x, self.y) }
 
-	pub fn length(self) -> f32 {
-		(self.x*self.x + self.y*self.y).sqrt()
-	}
+	pub fn length(self) -> f32 { self.dot(self).sqrt() }
 	
 	pub fn normalize(&self) -> Vec2 { *self * (1.0/self.length()) }
 	pub fn dot(&self, o: Vec2) -> f32 { self.x*o.x + self.y*o.y }

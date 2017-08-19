@@ -49,13 +49,14 @@ impl BoidView {
 		}
 	}
 
-	pub fn render(&self, view: &Mat4) {
+	pub fn render(&self, view: &Mat4, point_scalar: f32) {
 		if self.num_points < 1 { return }
 
 		unsafe {
 			self.shader.use_program();
 			self.shader.set_view(view);
-			self.shader.set_uniform_vec3("color", &Color::grey(0.2).to_vec3());
+			self.shader.set_uniform_vec3("color", &Color::rgb(0.22, 0.21, 0.2).to_vec3());
+			self.shader.set_uniform_f32("pointScale", 15.0 * point_scalar);
 
 			gl::EnableVertexAttribArray(0);
 

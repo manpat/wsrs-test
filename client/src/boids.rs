@@ -61,7 +61,7 @@ impl BoidSystem {
 
 	pub fn update(&mut self, dt: f32) {
 		let prev_boids = self.boids.clone();
-		let range = 4.0;
+		let range = 6.0;
 		let a_range = PI*2.0/4.0;
 
 		for boid in self.boids.iter_mut() {

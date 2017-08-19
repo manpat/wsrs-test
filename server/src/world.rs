@@ -123,9 +123,6 @@ impl World {
 
 		for y in 0..wh {
 			for x in 0..ww {
-				// NOTE: THis is still bleeding at the edges for some reason,
-				// 	it also seems to be biased to the left for some reason
-				// TODO: Fix obvs
 				let sample = |x: i32, y: i32| {
 					// Clamp to edge
 					let x = x.max(0).min(ww-1);

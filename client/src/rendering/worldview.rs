@@ -100,6 +100,10 @@ impl WorldView {
 
 		view.build_tree_buffer();
 
+		for _ in 0..30 {
+			view.boids.update(1.0/2.0);
+		}
+
 		view
 	}
 
@@ -309,10 +313,8 @@ impl TerrainView {
 	}
 
 	fn get_health_at(&self, p: Vec2) -> f32 {
-		let y = (p.y + 0.5) as usize;
-		let x = (p.x + 0.5) as usize;
-
-		if x as u32 >= MAP_SIZE || y as u32 >= MAP_SIZE { return 0.0 }
+		let y = (p.y as usize).min(MAP_SIZE as usize - 1);
+		let x = (p.x as usize).min(MAP_SIZE as usize - 1);
 
 		self.health_state[x + y * MAP_SIZE as usize] as f32 / 255.0
 	}

@@ -5,6 +5,7 @@ use rendering::worldview::WorldView;
 use connection::Connection;
 
 use common::*;
+use common::world::Species;
 use ui::{self, InputTarget};
 
 const DRAG_THRESHOLD: f32 = 10.0;
@@ -132,9 +133,10 @@ impl MainContext {
 						}
 
 						Action::ClickWorld(p) => {
-							// self.world_view.try_place_tree(p);
 							let pos = self.world_view.convert_to_world_coords(p);
-							self.connection.send(&Packet::RequestPlaceTree(pos.x, pos.z));
+							let mut rng = thread_rng();
+							self.connection.send(&Packet::RequestPlaceTree(pos.x, pos.z,
+								*rng.choose(&world::ALL_SPECIES).unwrap()));
 						}
 					}
 				}
@@ -256,8 +258,8 @@ impl MainContext {
 					self.auth_screen.set_key(token);
 				}
 
-				Packet::TreePlaced(id, pos_x, pos_y) => {
-					self.world_view.place_tree(id, Vec3::new(pos_x, 0.0, pos_y));
+				Packet::TreePlaced(id, pos_x, pos_y, species) => {
+					self.world_view.place_tree(id, Vec3::new(pos_x, 0.0, pos_y), species);
 				}
 
 				Packet::TreeDied(id) => {

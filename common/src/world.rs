@@ -10,6 +10,25 @@ pub const ALL_SPECIES: [Species; 3] = {
 	[A, B, C]
 };
 
+impl Species {
+	pub fn to_byte(self) -> u8 {
+		match self {
+			Species::A => 0,
+			Species::B => 1,
+			Species::C => 2,
+		}
+	}
+
+	pub fn from_byte(b: u8) -> Option<Self> {
+		match b {
+			0 => Some(Species::A),
+			1 => Some(Species::B),
+			2 => Some(Species::C),
+			_ => None
+		}
+	}
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum Maturity {
 	// [0, 1000) - affected by tick rate

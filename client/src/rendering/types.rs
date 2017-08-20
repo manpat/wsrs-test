@@ -36,12 +36,12 @@ impl Color {
 
 macro_rules! impl_ease_for_color {
 	($func: ident) => (
-		fn $func(&self, start: Color, end: Color, duration: f32) -> Color {
+		fn $func(&self, start: Color, end: Color) -> Color {
 			Color {
-				r: self.$func(start.r, end.r, duration),
-				g: self.$func(start.g, end.g, duration),
-				b: self.$func(start.b, end.b, duration),
-				a: self.$func(start.a, end.a, duration),
+				r: self.$func(start.r, end.r),
+				g: self.$func(start.g, end.g),
+				b: self.$func(start.b, end.b),
+				a: self.$func(start.a, end.a),
 			}
 		}
 	)

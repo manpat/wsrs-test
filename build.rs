@@ -38,13 +38,13 @@ fn main() {
 				println!("cargo:rustc-env=PUBLIC_ADDRESS={}", address);
 			} else {
 				println!("cargo:warning=Couldn't determine public address! Falling back to constant");
-				println!("cargo:rustc-env=PUBLIC_ADDRESS={}", "18.220.1.127");
+				println!("cargo:rustc-env=PUBLIC_ADDRESS={}", "18.220.1.85");
 			}
 		}
 	} else {
 		// TODO: look into gethostname gethostbyname, or getifaddrs
 		// can be used to determine local ip
-		println!("cargo:rustc-env=PUBLIC_ADDRESS={}", "192.168.1.167");
+		println!("cargo:rustc-env=PUBLIC_ADDRESS={}", "192.168.1.85");
 	}
 
 	// println!("cargo:rustc-cfg=debug_requests");

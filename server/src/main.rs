@@ -10,7 +10,6 @@ mod world;
 #[macro_use]
 extern crate common;
 
-extern crate rand;
 extern crate sha1;
 extern crate base64;
 extern crate flate2;
@@ -22,6 +21,7 @@ use std::thread;
 use std::time;
 
 use common::*;
+use common::world::Species;
 use connections::ConnectionID;
 
 // main thread, sim -> network thread
@@ -31,8 +31,8 @@ enum NetworkMessage {
 	AuthSuccess(ConnectionID, u32),
 	AuthFail(ConnectionID),
 
-	WorldStateReady(ConnectionID, Vec<(u32, Vec2)>, Vec<u8>),
-	PlaceTree(u32, Vec2),
+	WorldStateReady(ConnectionID, Vec<(u32, Vec2, Species)>, Vec<u8>),
+	PlaceTree(u32, Vec2, Species),
 	KillTree(u32),
 
 	WorldTick(Vec<u8>),
@@ -45,7 +45,7 @@ enum SimulationMessage {
 	AttemptAuthSession(ConnectionID, u32),
 
 	RequestWorldState(ConnectionID),
-	RequestPlaceTree(ConnectionID, Vec2),
+	RequestPlaceTree(ConnectionID, Vec2, Species),
 }
 
 fn main() {
@@ -145,13 +145,13 @@ fn network_loop(rx: mpsc::Receiver<NetworkMessage>, tx: mpsc::Sender<SimulationM
 				NM::WorldStateReady(id, state, health_state) => {
 					packet_queue.push((Some(id), Packet::HealthUpdate(health_state)));
 
-					for (t_id, pos) in state {
+					for (t_id, pos, species) in state {
 						// This is p' heavy - best not send hundreds of packets at once probably
-						packet_queue.push((Some(id), Packet::TreePlaced(t_id, pos.x, pos.y)));
+						packet_queue.push((Some(id), Packet::TreePlaced(t_id, pos.x, pos.y, species)));
 					}
 				}
 
-				NM::PlaceTree(tree_id, pos) => packet_queue.push((None, Packet::TreePlaced(tree_id, pos.x, pos.y))),
+				NM::PlaceTree(tree_id, pos, species) => packet_queue.push((None, Packet::TreePlaced(tree_id, pos.x, pos.y, species))),
 				NM::KillTree(tree_id) => packet_queue.push((None, Packet::TreeDied(tree_id))),
 				NM::WorldTick(health_state) => packet_queue.push((None, Packet::HealthUpdate(health_state))),
 				NM::TreeTick(tree_changes) => packet_queue.push((None, Packet::TreeUpdate(tree_changes))),
@@ -171,9 +171,9 @@ fn network_loop(rx: mpsc::Receiver<NetworkMessage>, tx: mpsc::Sender<SimulationM
 					tx.send(SM::RequestWorldState(id)).unwrap();
 				}
 
-				Packet::RequestPlaceTree(x, y) => {
-					println!("place tree ({}): {}, {}", id, x, y);
-					tx.send(SM::RequestPlaceTree(id, Vec2::new(x, y))).unwrap();
+				Packet::RequestPlaceTree(x, y, species) => {
+					println!("place tree ({}): {}, {} - [{:?}]", id, x, y, species);
+					tx.send(SM::RequestPlaceTree(id, Vec2::new(x, y), species)).unwrap();
 				}
 
 				_ => {}
@@ -229,7 +229,9 @@ fn sim_loop(tx: mpsc::Sender<NetworkMessage>, rx: mpsc::Receiver<SimulationMessa
 					println!("New Session requested for {}", con_id);
 
 					let max_key = 3u32.pow(9);
-					let random_key = rand::random::<u32>() % max_key;
+
+					let mut rng = thread_rng();
+					let random_key = rng.gen_range(0, max_key);
 					// TODO: not this
 					
 					tx.send(NM::NewSession(con_id, random_key)).unwrap();
@@ -247,18 +249,18 @@ fn sim_loop(tx: mpsc::Sender<NetworkMessage>, rx: mpsc::Receiver<SimulationMessa
 				SM::RequestWorldState(con_id) => {
 					let trees = world.trees.iter()
 						.filter(|t| !t.is_dead())
-						.map(|t| (t.id, t.pos))
+						.map(|t| (t.id, t.pos, t.species))
 						.collect::<Vec<_>>();
 
 					tx.send(NM::WorldStateReady(con_id, trees, health_state.clone())).unwrap();
 					tx.send(NM::TreeTick(tree_maturities.clone())).unwrap();
 				}
 
-				SM::RequestPlaceTree(con_id, pos) => {
+				SM::RequestPlaceTree(con_id, pos, species) => {
 					// TODO: Check con_id has a session and hasn't already
 					//	placed too many trees
-					if let Some(t_id) = world.place_tree(Species::A, pos) {
-						tx.send(NM::PlaceTree(t_id, pos)).unwrap();
+					if let Some(t_id) = world.place_tree(species, pos) {
+						tx.send(NM::PlaceTree(t_id, pos, species)).unwrap();
 					}
 				}
 			}

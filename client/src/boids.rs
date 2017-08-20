@@ -1,7 +1,4 @@
-use common::math::*;
-use common::easing::*;
-
-use rand::{random, Open01, Closed01};
+use common::*;
 
 use rendering::worldview::{MAP_SIZE, TILE_SIZE}; // UUUUGGHHHHH
 
@@ -26,16 +23,9 @@ pub struct BoidSystem {
 
 impl BoidSystem {
 	pub fn new(world_bounds: Vec2) -> Self {
-		let rand_f32 = |range| {
-			let Closed01(f) = random::<Closed01<f32>>();
-			f * range
-		};
-
-		let rand_vec2 = |range: Vec2| {
-			Vec2::new(rand_f32(range.x), rand_f32(range.y))
-		};
-
 		let mut boids = Vec::new();
+
+		let mut rng = thread_rng();
 
 		for _ in 0..100 {
 			let id = boids.len() as u32;
@@ -43,10 +33,10 @@ impl BoidSystem {
 			boids.push(Boid{
 				pos: rand_vec2(world_bounds),
 				vel: rand_vec2(Vec2::splat(2.0)) - Vec2::splat(1.0),
-				heading: rand_f32(PI),
+				heading: rng.gen_range(0.0, PI),
 				id,
 				phase: 0.0,
-				rate: rand_f32(PI/2.0) + PI*3.0/2.0,
+				rate: rng.gen_range(PI*1.0/2.0, PI*5.0/2.0),
 			});
 		}
 
@@ -122,8 +112,7 @@ impl BoidSystem {
 			let clamped_dist = Vec2::new(dist_to_edge.x.max(0.0), dist_to_edge.y.max(0.0));
 			let edge_avoid = diff_to_center.normalize() * clamped_dist * (1.0 / edge_avoid_margin);
 
-			let Open01(random_heading_delta) = random::<Open01<f32>>();
-			let random_heading_delta = random_heading_delta * 2.0 - 1.0;
+			let random_heading_delta = rand_f32(2.0) - 1.0;
 
 			boid.heading += random_heading_delta * PI * dt * 2.0;
 			let heading = Vec2::from_angle(boid.heading);
@@ -131,7 +120,7 @@ impl BoidSystem {
 			let acc = flocking_acc + edge_avoid * 3.0 + heading * 2.0 + health_gradient * 2.0;
 
 			if acc.length() > 0.01 {
-				boid.vel = dt.ease_linear(boid.vel, acc.normalize(), 1.0);
+				boid.vel = dt.ease_linear(boid.vel, acc.normalize());
 			}
 
 			boid.vel = boid.vel.normalize() * 0.75;

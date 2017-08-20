@@ -302,7 +302,7 @@ impl StatusRing {
 		builder.start_stencil_erase();
 		builder.build_ring(Vec2::new(0.0, 0.0), Color::black(), main_shape_segs, 0.45, 0.05);
 		
-		let plus_pos = self.position + self.plus_offset.ease_exp_in(Vec2::zero(), Vec2::new(0.0, -0.3), 1.0);
+		let plus_pos = self.position + self.plus_offset.ease_exp_in(Vec2::zero(), Vec2::new(0.0, -0.3));
 		builder.start_stencilled_draw(StencilFunc::Equal, 1);
 		builder.build_poly(self.position, Color::white(), main_shape_segs, 0.12);
 		builder.build_poly_rot(plus_pos, Color::rgb(0.3, 0.8, 0.6), 4, 0.08, PI/4.0);
@@ -315,7 +315,7 @@ impl StatusRing {
 		builder.start_stencil_replace(2);
 		builder.build_poly(Vec2::new(0.0, 0.0), Color::black(), main_shape_segs, 0.45);
 
-		let hole_mod = self.aperture_phase.ease_quad_inout(0.12, 0.0, 1.0);
+		let hole_mod = self.aperture_phase.ease_quad_inout(0.12, 0.0);
 
 		// Status ring inside main -> stencil
 		builder.start_stencil_replace_if(StencilFunc::Less, 1);
@@ -335,24 +335,24 @@ impl StatusRing {
 
 		match self.animation {
 			Some(StatusAnimation::Fail) => {
-				let r = self.anim_phase.ease_exp_out(0.12, 0.2, 0.75);
-				let a = (self.anim_phase-0.5).ease_linear(1.0, 0.0, 1.0);
+				let r = (self.anim_phase/0.75).ease_exp_out(0.12, 0.2);
+				let a = (self.anim_phase-0.5).ease_linear(1.0, 0.0);
 				builder.build_poly(self.position, Color::rgba(1.0, 0.4, 0.4, a), main_shape_segs, r);
 			},
 
 			Some(StatusAnimation::Success) => {
-				let r = self.anim_phase.ease_exp_in(0.12, 0.2, 0.7);
+				let r = (self.anim_phase/0.7).ease_exp_in(0.12, 0.2);
 				builder.build_poly(self.position, Color::rgb(0.4, 1.0, 0.4), main_shape_segs, r);
 			},
 
 			Some(StatusAnimation::Connect) => {
-				let a = self.anim_phase.ease_quad_in(1.0, 0.0, 1.0);
+				let a = self.anim_phase.ease_quad_in(1.0, 0.0);
 				builder.build_poly(self.position, Color::grey_a(0.9, a), main_shape_segs, 0.2);
 			},
 
 			Some(StatusAnimation::Disconnect) => {
-				let r = self.anim_phase.ease_exp_in(0.12, 0.2, 0.7);
-				let a = self.anim_phase.ease_quad_in(0.3, 1.0, 1.0);
+				let r = (self.anim_phase/0.7).ease_exp_in(0.12, 0.2);
+				let a = self.anim_phase.ease_quad_in(0.3, 1.0);
 				builder.build_poly(self.position, Color::grey_a(0.4, a), main_shape_segs, r);
 			},
 
@@ -376,7 +376,7 @@ impl KeyTumbler {
 
 	fn update(&mut self, dt: f32) {
 		let target_pos = self.state as f32;
-		self.pos = self.anim_phase.ease_back_out(self.prev_pos, target_pos, 0.8);
+		self.pos = (self.anim_phase/0.8).ease_back_out(self.prev_pos, target_pos);
 
 		self.anim_phase += dt;
 	}

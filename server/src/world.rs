@@ -1,9 +1,7 @@
 pub use common::world::*;
 
-use rand;
-
 use std::time::{Instant, Duration};
-use common::math::*;
+use common::*;
 
 const WORLD_DIMS: (usize,usize) = (28, 28);
 const DIVERSITY_RANGE: f32 = 1.3;
@@ -45,8 +43,14 @@ impl World {
 	pub fn new_random() -> Self {
 		let mut world = World::new();
 
+		for _ in 0..50 {
+			world.place_tree(Species::A, rand_vec2(Vec2::new(WORLD_DIMS.0 as f32, WORLD_DIMS.1 as f32)));
+		}
+
+		let mut rng = thread_rng();
+
 		for _ in 0..10 {
-			let idx = rand::random::<usize>() % world.land.len();
+			let idx = rng.gen_range(0, world.land.len());
 			world.land[idx] = 100.0;
 		}
 
@@ -58,9 +62,12 @@ impl World {
 	}
 
 	pub fn place_tree(&mut self, s: Species, pos: Vec2) -> Option<u32> {
-		let (x,y) = (pos.x as usize, pos.y as usize);
-
-		if x >= WORLD_DIMS.0 || y >= WORLD_DIMS.1 { return None }
+		if pos.x < -0.5
+		|| pos.y < -0.5
+		|| pos.x > WORLD_DIMS.0 as f32 - 0.5
+		|| pos.y > WORLD_DIMS.1 as f32 - 0.5 {
+			return None
+		}
 
 		let pos_available = self.trees.iter()
 			.all(|x| (x.pos - pos).length() > TREE_RADIUS);
@@ -180,10 +187,9 @@ impl World {
 
 				let mut c = self.land[idx];
 				c -= 0.03 + ((c-15.0)/3.0).max(0.0); // decay
-				c += local_diversity / 0.6;
+				c += local_diversity * nearby_mature * 0.2;
 				c += nearby_dead * 3.0;
 				c -= nearby_growing * 0.2;
-				c += nearby_mature * 0.2;
 				c = c.max(0.0);
 
 				self.land[idx] = c;

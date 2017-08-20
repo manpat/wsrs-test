@@ -1,4 +1,5 @@
 #![feature(slice_patterns)]
+extern crate rand;
 
 pub mod easing;
 pub mod packet;
@@ -71,4 +72,16 @@ pub fn read_u16_from_slice(src: &[u8]) -> u16 {
 	a.copy_from_slice(&src[..2]);
 
 	unsafe { std::mem::transmute(a) }
+}
+
+pub use rand::{thread_rng, Rng};
+use rand::{random, Closed01};
+
+pub fn rand_f32 (range: f32) -> f32 {
+	let Closed01(f) = random::<Closed01<f32>>();
+	f * range
+}
+
+pub fn rand_vec2 (range: Vec2) -> Vec2 {
+	Vec2::new(rand_f32(range.x), rand_f32(range.y))
 }

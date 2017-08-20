@@ -4,7 +4,6 @@
 
 #[macro_use]
 extern crate common;
-extern crate rand;
 extern crate libc;
 
 #[macro_use]

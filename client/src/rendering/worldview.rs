@@ -8,10 +8,10 @@ use rendering::texture::*;
 use std::f32::consts::PI;
 use std::mem::{transmute, size_of, size_of_val};
 
+use common::world::*;
+
 use boids::BoidSystem;
 use rendering::boidview::BoidView;
-
-use rand;
 
 static TERRAIN_VERT_SRC: &'static str = include_str!("../../assets/terrain.vert");
 static TERRAIN_FRAG_SRC: &'static str = include_str!("../../assets/terrain.frag");
@@ -46,6 +46,15 @@ struct TreeMesh {
 	leafage_count: i32,
 }
 
+struct TreeInstance {
+	id: u32,
+	pos: Vec3,
+	stage: u8,
+	species: Species,
+
+	current_health: f32,
+}
+
 pub struct WorldView {
 	shader: Shader,
 	terrain: TerrainView,
@@ -58,7 +67,7 @@ pub struct WorldView {
 	tree_starts: [i32; 4],
 	tree_vbo: u32,
 
-	trees: Vec<(u32, Vec3, u8)>,
+	trees: Vec<TreeInstance>,
 	translation: Vec3,
 }
 
@@ -110,6 +119,11 @@ impl WorldView {
 	pub fn update(&mut self, dt: f32) {
 		self.boids.update(dt);
 		self.boidview.update(&self.boids);
+
+		for tree in self.trees.iter_mut() {
+			let health = self.terrain.get_health_at(Vec2::new(tree.pos.x, tree.pos.z));
+			tree.current_health = (dt/16.0).ease_linear(tree.current_health, health);
+		}
 	}
 
 	pub fn render(&mut self, vp: &Viewport) {
@@ -156,11 +170,10 @@ impl WorldView {
 
 			let trunk_color = Color::rgb(0.8, 0.411, 0.22);
 
-			for &(_, p, tree_idx) in &self.trees {
-				self.shader.set_view(&(world_mat * Mat4::translate(p * TILE_SIZE)));
+			for tree in &self.trees {
+				self.shader.set_view(&(world_mat * Mat4::translate(tree.pos * TILE_SIZE)));
 
-				let health = self.terrain.get_health_at(Vec2::new(p.x, p.z));
-				let tree_idx = tree_idx as usize;
+				let tree_idx = tree.stage as usize;
 
 				let trunk_count = self.tree_models[tree_idx].trunk_count;
 				let leafage_count = self.tree_models[tree_idx].leafage_count;
@@ -175,7 +188,8 @@ impl WorldView {
 				}
 
 				if leafage_count > 0 {
-					self.shader.set_uniform_vec3("color", &WorldView::get_tree_color(health).to_vec3());
+					let color = WorldView::get_tree_color(tree.current_health, tree.species);
+					self.shader.set_uniform_vec3("color", &color.to_vec3());
 					gl::DrawArrays(gl::TRIANGLES, base_start + leafage_start as i32 * 3, leafage_count as i32 * 3);
 				}
 			}
@@ -222,27 +236,47 @@ impl WorldView {
 		normal_mat * ((Vec3::new(x, 0.0, y) - self.translation) * Vec3::new(1.0/sc, 1.0, 1.0/(sc*xrot.sin())))
 	}
 
-	pub fn place_tree(&mut self, id: u32, p: Vec3) {
-		self.trees.push((id, p, 0));
+	pub fn place_tree(&mut self, id: u32, pos: Vec3, species: Species) {
+		self.trees.push(TreeInstance {
+			id, pos,
+			stage: 0, species,
+			current_health: self.terrain.get_health_at(Vec2::new(pos.x, pos.z)),
+		});
 	}
 
 	pub fn set_tree_stage(&mut self, id: u32, stage: u8) {
-		for &mut (tid, _, ref mut st) in self.trees.iter_mut() {
-			if tid == id { *st = stage; } 
+		for tree in self.trees.iter_mut() {
+			if tree.id == id { tree.stage = stage; } 
 		}
 	}
 
 	pub fn kill_tree(&mut self, id: u32) {
-		self.trees.retain(|x| x.0 != id);
+		self.trees.retain(|tree| tree.id != id);
 	}
 
-	fn get_tree_color(health: f32) -> Color {
-		let pal = [
-			Color::rgb(0.778, 0.895, 0.241),
-			Color::rgb(0.593, 0.928, 0.257),
-			Color::rgb(0.348, 0.800, 0.185),
-			Color::rgb(0.197, 0.800, 0.202),
-		];
+	fn get_tree_color(health: f32, species: Species) -> Color {
+		let pal = match species {
+			Species::A => [
+				Color::rgb(0.778, 0.895, 0.241),
+				Color::rgb(0.593, 0.928, 0.257),
+				Color::rgb(0.348, 0.800, 0.185),
+				Color::rgb(0.197, 0.800, 0.202),
+			],
+
+			Species::B => [
+				Color::rgb(0.6, 0.7, 0.8),
+				Color::rgb(0.5, 0.7, 0.9),
+				Color::rgb(0.4, 0.6, 0.9),
+				Color::rgb(0.4, 0.6, 1.0),
+			],
+
+			Species::C => [
+				Color::rgb(0.8, 0.8, 0.7),
+				Color::rgb(0.9, 0.8, 0.6),
+				Color::rgb(1.0, 0.7, 0.6),
+				Color::rgb(1.0, 0.5, 0.5),
+			],
+		};
 
 		let real_idx = health * pal.len() as f32;
 		let real_next = real_idx + 1.0;
@@ -252,7 +286,7 @@ impl WorldView {
 
 		let col_a = pal[pal_idx];
 		let col_b = pal[pal_next];
-		return real_idx.fract().ease_linear(col_a, col_b, 1.0);
+		return real_idx.fract().ease_linear(col_a, col_b);
 	}
 
 	pub fn update_health_state(&mut self, hs: Vec<u8>) {
@@ -457,7 +491,7 @@ fn process_tree_mesh(mesh: Mesh3DS) -> TreeMesh {
 		}
 	}
 
-	println!("{:?}", tree.verts);
+	// println!("{:?}", tree.verts);
 
 	// println!("trunk: {:?}      leafage: {:?}", trunk_start, leafage_start);
 

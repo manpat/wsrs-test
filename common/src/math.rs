@@ -283,10 +283,10 @@ impl Mul<Vec3> for Mat4 {
 
 macro_rules! impl_ease_for_vec2 {
 	($func: ident) => (
-		fn $func(&self, start: Vec2, end: Vec2, duration: f32) -> Vec2 {
+		fn $func(&self, start: Vec2, end: Vec2) -> Vec2 {
 			Vec2 {
-				x: self.$func(start.x, end.x, duration),
-				y: self.$func(start.y, end.y, duration),
+				x: self.$func(start.x, end.x),
+				y: self.$func(start.y, end.y),
 			}
 		}
 	)
@@ -294,11 +294,11 @@ macro_rules! impl_ease_for_vec2 {
 
 macro_rules! impl_ease_for_vec3 {
 	($func: ident) => (
-		fn $func(&self, start: Vec3, end: Vec3, duration: f32) -> Vec3 {
+		fn $func(&self, start: Vec3, end: Vec3) -> Vec3 {
 			Vec3 {
-				x: self.$func(start.x, end.x, duration),
-				y: self.$func(start.y, end.y, duration),
-				z: self.$func(start.z, end.z, duration),
+				x: self.$func(start.x, end.x),
+				y: self.$func(start.y, end.y),
+				z: self.$func(start.z, end.z),
 			}
 		}
 	)

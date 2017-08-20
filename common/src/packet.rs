@@ -1,6 +1,8 @@
 use std;
 use ::*;
 
+use world::Species;
+
 #[derive(Clone)]
 pub enum Packet {
 	// Client -> Server
@@ -9,14 +11,14 @@ pub enum Packet {
 	AttemptAuthSession(u32),
 	RequestDownloadWorld,
 
-	RequestPlaceTree(f32, f32),
+	RequestPlaceTree(f32, f32, Species),
 
 	// Server -> Client
 	AuthSuccessful(u32),
 	AuthFail,
 	NewSession(u32),
 
-	TreePlaced(u32, f32, f32),
+	TreePlaced(u32, f32, f32, Species),
 	TreeDied(u32),
 
 	HealthUpdate(Vec<u8>),
@@ -58,7 +60,8 @@ impl Packet {
 
 			0x10 => {
 				let (x,y) = (read_f32_from_slice(&src[1..]), read_f32_from_slice(&src[5..]));
-				Some(Packet::RequestPlaceTree(x, y))
+				let spec = Species::from_byte(src[9]).unwrap_or(Species::A);
+				Some(Packet::RequestPlaceTree(x, y, spec))
 			}
 
 			0x80 => Some(Packet::AuthSuccessful(read_u32_from_slice(&src[1..]))),
@@ -68,7 +71,8 @@ impl Packet {
 			0x90 => {
 				let tree_id = read_u32_from_slice(&src[1..]);
 				let (x,y) = (read_f32_from_slice(&src[5..]), read_f32_from_slice(&src[9..]));
-				Some(Packet::TreePlaced(tree_id, x, y))
+				let species = Species::from_byte(src[13]).unwrap_or(Species::A);
+				Some(Packet::TreePlaced(tree_id, x, y, species))
 			}
 
 			0x91 => Some(Packet::TreeDied(read_u32_from_slice(&src[1..]))),
@@ -105,10 +109,11 @@ impl Packet {
 
 			Packet::RequestDownloadWorld => 1,
 
-			Packet::RequestPlaceTree(x, y) => {
+			Packet::RequestPlaceTree(x, y, spec) => {
 				write_f32_to_slice(&mut dst[1..], x);
 				write_f32_to_slice(&mut dst[5..], y);
-				9
+				dst[9] = spec.to_byte();
+				10
 			}
 
 			Packet::AuthSuccessful(tok) => {
@@ -121,11 +126,12 @@ impl Packet {
 				5
 			}
 
-			Packet::TreePlaced(id, x, y) => {
+			Packet::TreePlaced(id, x, y, species) => {
 				write_u32_to_slice(&mut dst[1..], id);
 				write_f32_to_slice(&mut dst[5..], x);
 				write_f32_to_slice(&mut dst[9..], y);
-				13
+				dst[13] = species.to_byte();
+				14
 			}
 
 			Packet::TreeDied(id) => {

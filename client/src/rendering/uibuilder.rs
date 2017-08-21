@@ -142,10 +142,11 @@ impl UIBuilder {
 		unsafe {
 			use std::mem::{transmute, size_of, size_of_val};
 
-			self.shader.use_program();
-
 			let aspect = self.viewport.get_aspect();
 
+			gl::Disable(gl::DEPTH_TEST);
+
+			self.shader.use_program();
 			self.shader.set_view(&Mat4::scale(Vec3::new(1.0/aspect, 1.0, 1.0)));
 
 			let vert_size = size_of::<Vertex>();
@@ -220,6 +221,8 @@ impl UIBuilder {
 					}
 				}
 			}
+
+			gl::Enable(gl::DEPTH_TEST);
 		}
 	}
 

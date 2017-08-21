@@ -147,7 +147,8 @@ impl WorldView {
 		let normal_mat = Mat4::yrot(-yrotph);
 
 		unsafe {
-			gl::ClearColor(0.4f32.powf(1.0/2.2), 0.808f32.powf(1.0/2.2), 0.58f32.powf(1.0/2.2), 1.0);
+			let clear_col = Color::rgb(0.4, 0.808, 0.58).pow(1.0/2.2);
+			gl::ClearColor(clear_col.r, clear_col.g, clear_col.b, 1.0);
 			gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
 		}
 
@@ -273,7 +274,7 @@ impl WorldView {
 			Species::C => [
 				Color::rgb(0.8, 0.8, 0.7),
 				Color::rgb(0.9, 0.8, 0.6),
-				Color::rgb(1.0, 0.7, 0.6),
+				Color::rgb(1.0, 0.7, 0.5),
 				Color::rgb(1.0, 0.5, 0.5),
 			],
 		};

@@ -32,6 +32,15 @@ impl Color {
 
 	pub fn to_vec3(&self) -> Vec3 { Vec3::new(self.r, self.g, self.b) }
 	pub fn to_vec4(&self) -> Vec4 { Vec4::new(self.r, self.g, self.b, self.a) }
+
+	pub fn pow(self, exp: f32) -> Color {
+		Color::rgba(
+			self.r.powf(exp),
+			self.g.powf(exp),
+			self.b.powf(exp),
+			self.a,
+		)
+	}
 }
 
 macro_rules! impl_ease_for_color {

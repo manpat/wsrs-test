@@ -34,6 +34,8 @@ pub struct MainContext {
 	is_dragging: bool,
 	is_mouse_down: bool,
 
+	selected_species: Species,
+
 	// hack hack hack
 	pub touch_id: Option<i32>,
 	pub touch_enabled: bool,
@@ -63,6 +65,8 @@ impl MainContext {
 			click_start_pos: Vec2i::zero(),
 			is_dragging: false,
 			is_mouse_down: false,
+
+			selected_species: Species::A,
 
 			touch_id: None,
 			touch_enabled: false,
@@ -134,9 +138,12 @@ impl MainContext {
 
 						Action::ClickWorld(p) => {
 							let pos = self.world_view.convert_to_world_coords(p);
-							let mut rng = thread_rng();
 							self.connection.send(&Packet::RequestPlaceTree(pos.x, pos.z,
-								*rng.choose(&world::ALL_SPECIES).unwrap()));
+								self.selected_species));
+						}
+
+						Action::SetSpecies(s) => {
+							self.selected_species = s;
 						}
 					}
 				}
@@ -158,6 +165,7 @@ impl MainContext {
 			}
 
 			ScreenState::MainScreen => {
+				self.main_screen.viewport = vp;
 				self.main_screen.render(&mut self.ui_builder);
 			}
 		}
